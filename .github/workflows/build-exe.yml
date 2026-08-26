@@ -56,12 +56,15 @@ jobs:
           --paths src
           --exclude-module tkinter
           --exclude-module unittest
-          src/what_number/__main__.py
+          --hidden-import what_number.demo
+          launcher.py
 
       # 만들어진 exe 가 실제로 실행되는지, 전표 인식까지 되는지 확인한다.
       - name: 실행 확인
         shell: pwsh
         run: |
+          [Console]::OutputEncoding = [Text.Encoding]::UTF8
+          $OutputEncoding = [Text.Encoding]::UTF8
           $env:PYTHONPATH = "src"
           python -c "from what_number.demo import make_receipt; open('sample.bin','wb').write(make_receipt(17,'B-0042',[('김치찌개',2),('소주',1)]))"
           dist\what_number.exe --help

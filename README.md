@@ -19,6 +19,21 @@
 
 ---
 
+## 프로그램 받기
+
+GitHub 에서 자동으로 만들어 둡니다. 직접 빌드할 필요가 없습니다.
+
+1. [Actions 탭](https://github.com/ssongboy1/what_number/actions/workflows/build-exe.yml) 을 엽니다
+2. 맨 위(가장 최근) 줄을 누릅니다 — 초록색 체크 표시가 있어야 합니다
+3. 페이지 맨 아래 **Artifacts** 의 `what_number-exe` 를 눌러 받습니다
+4. 받은 zip 을 풀면 `what_number.exe` 가 나옵니다
+
+> zip 을 풀지 않고 그대로 실행하면 설정 파일이 저장되지 않습니다. 꼭 압축을 푸세요.
+
+직접 만들고 싶으면 이 저장소를 내려받아 `build.bat` 을 실행하면 됩니다(파이썬 필요).
+
+---
+
 ## 쓰는 법
 
 ### 1. 준비물

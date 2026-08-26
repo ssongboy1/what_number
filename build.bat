@@ -37,7 +37,8 @@ python -m PyInstaller ^
     --paths src ^
     --exclude-module tkinter ^
     --exclude-module unittest ^
-    src\what_number\__main__.py
+    --hidden-import what_number.demo ^
+    launcher.py
 if errorlevel 1 (
     echo  [!] 빌드에 실패했습니다.
     pause
