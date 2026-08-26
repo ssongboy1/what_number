@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import os
 import sys
 import threading
@@ -217,7 +218,27 @@ def demo(cfg: config_module.Config, count: int = 8) -> int:
     return 0
 
 
+def setup_console() -> None:
+    """콘솔이 한글을 출력하다 죽지 않게 맞춘다.
+
+    윈도우 콘솔의 기본 코드 페이지가 한글을 담지 못하면 print 한 번에
+    UnicodeEncodeError 로 프로그램 전체가 종료된다.
+    """
+    if os.name == "nt":
+        try:
+            ctypes.windll.kernel32.SetConsoleOutputCP(65001)  # type: ignore[attr-defined]
+        except Exception:
+            pass
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    setup_console()
+
     parser = argparse.ArgumentParser(description="포스가 프린터로 보내는 주문서를 모아 보여줍니다.")
     parser.add_argument("--port", type=int, help="화면 주소의 포트 번호")
     parser.add_argument("--no-browser", action="store_true", help="시작할 때 브라우저를 열지 않음")

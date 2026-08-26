@@ -180,3 +180,37 @@ class RasterHandlingTest(unittest.TestCase):
         self.app.feed(data, printer_ip="192.168.0.50")
         self.app.feed(data, printer_ip="192.168.0.51")
         self.assertEqual(self.app.store.count(), 1)
+
+
+class ConsoleEncodingTest(unittest.TestCase):
+    """콘솔이 한글을 담지 못하는 환경에서도 프로그램이 죽으면 안 된다."""
+
+    def test_runs_under_a_console_that_cannot_encode_korean(self):
+        import os
+        import subprocess
+        import sys
+        import tempfile
+
+        from what_number.demo import make_receipt
+
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with tempfile.TemporaryDirectory() as tmp:
+            sample = os.path.join(tmp, "sample.bin")
+            with open(sample, "wb") as f:
+                f.write(make_receipt(17, "B-0042", [("김치찌개", 2)]))
+
+            env = dict(os.environ)
+            env["PYTHONPATH"] = os.path.join(root, "src")
+            env["PYTHONIOENCODING"] = "cp1252"  # 한글을 담지 못하는 인코딩
+            env.pop("PYTHONUTF8", None)
+            result = subprocess.run(
+                [sys.executable, os.path.join(root, "launcher.py"), "--replay", sample],
+                env=env,
+                capture_output=True,
+                timeout=60,
+            )
+
+        self.assertEqual(
+            result.returncode, 0, f"한글 출력에서 죽었다:\n{result.stderr.decode('utf-8', 'replace')}"
+        )
+        self.assertIn("B-0042", result.stdout.decode("utf-8", "replace"))
