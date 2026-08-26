@@ -1,0 +1,86 @@
+name: exe 빌드
+
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: 테스트 (Python ${{ matrix.python }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.8", "3.12"]
+    env:
+      PYTHONPATH: src
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: 단위 테스트
+        run: python -m unittest discover -s tests -v
+
+  build:
+    name: exe 만들기
+    needs: test
+    runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+
+      # 오래된 포스 PC(윈도우 7/8)에서도 실행되도록 낮은 버전으로 빌드한다.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.8"
+
+      - name: 빌드 도구 설치
+        run: python -m pip install --upgrade pip "pyinstaller>=6.0,<7"
+
+      - name: exe 빌드
+        run: >
+          python -m PyInstaller
+          --onefile
+          --uac-admin
+          --console
+          --clean
+          --noconfirm
+          --noupx
+          --name what_number
+          --paths src
+          --exclude-module tkinter
+          --exclude-module unittest
+          src/what_number/__main__.py
+
+      # 만들어진 exe 가 실제로 실행되는지, 전표 인식까지 되는지 확인한다.
+      - name: 실행 확인
+        shell: pwsh
+        run: |
+          $env:PYTHONPATH = "src"
+          python -c "from what_number.demo import make_receipt; open('sample.bin','wb').write(make_receipt(17,'B-0042',[('김치찌개',2),('소주',1)]))"
+          dist\what_number.exe --help
+          $out = & dist\what_number.exe --replay sample.bin | Out-String
+          Write-Host $out
+          if ($out -notmatch "테이블   : 17") { throw "exe 가 전표를 제대로 읽지 못했습니다" }
+          if ($out -notmatch "B-0042")        { throw "exe 가 주문번호를 읽지 못했습니다" }
+          Write-Host "exe 실행 및 전표 인식 정상"
+
+      - name: 파일 정보
+        shell: pwsh
+        run: |
+          $file = Get-Item dist\what_number.exe
+          Write-Host ("크기   : {0:N1} MB" -f ($file.Length / 1MB))
+          Write-Host ("SHA256 : " + (Get-FileHash dist\what_number.exe -Algorithm SHA256).Hash)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: what_number-exe
+          path: dist/what_number.exe
+          retention-days: 90
+          if-no-files-found: error
