@@ -8,8 +8,13 @@ echo   what_number.exe 만들기
 echo  ====================================================
 echo.
 
-where python >nul 2>&1
-if errorlevel 1 (
+REM PATH 의 python.exe 가 윈도우 스토어 껍데기인 경우가 있어 py 런처를 먼저 쓴다.
+set PY=
+py -3 --version >nul 2>&1 && set PY=py -3
+if not defined PY (
+    python -c "import sys" >nul 2>&1 && set PY=python
+)
+if not defined PY (
     echo  [!] 파이썬이 설치되어 있지 않습니다.
     echo      https://www.python.org/downloads/ 에서 설치한 뒤
     echo      설치 화면의 "Add python.exe to PATH" 를 꼭 체크하세요.
@@ -19,7 +24,7 @@ if errorlevel 1 (
 )
 
 echo  [1/2] 빌드 도구 준비 중...
-python -m pip install --quiet --upgrade pyinstaller
+%PY% -m pip install --quiet --upgrade pyinstaller
 if errorlevel 1 (
     echo  [!] 빌드 도구 설치에 실패했습니다. 인터넷 연결을 확인하세요.
     pause
@@ -27,7 +32,7 @@ if errorlevel 1 (
 )
 
 echo  [2/2] exe 만드는 중... (1~2분 걸립니다)
-python -m PyInstaller ^
+%PY% -m PyInstaller ^
     --onefile ^
     --uac-admin ^
     --console ^

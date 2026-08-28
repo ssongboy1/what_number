@@ -236,6 +236,19 @@ def setup_console() -> None:
             pass
 
 
+def pause() -> None:
+    """더블클릭으로 실행했을 때 창이 즉시 닫혀 내용을 못 보는 일을 막는다.
+
+    콘솔이 아닌 환경(자동 실행·파이프)에서는 입력을 기다릴 수 없으므로 그냥 넘어간다.
+    """
+    if os.name != "nt":
+        return
+    try:
+        input("\n엔터를 누르면 창이 닫힙니다...")
+    except (EOFError, KeyboardInterrupt, OSError):
+        pass
+
+
 def main(argv: list[str] | None = None) -> int:
     setup_console()
 
@@ -244,6 +257,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-browser", action="store_true", help="시작할 때 브라우저를 열지 않음")
     parser.add_argument("--replay", nargs="+", metavar="파일", help="저장된 인쇄 원본으로 인식 시험")
     parser.add_argument("--demo", action="store_true", help="포스 없이 가짜 주문으로 화면만 확인")
+    parser.add_argument("--진단", "--diagnose", dest="diagnose", action="store_true",
+                        help="이 PC의 프린터 연결 방식과 주문 데이터 위치를 조사")
     args = parser.parse_args(argv)
 
     cfg = config_module.load()
@@ -251,6 +266,14 @@ def main(argv: list[str] | None = None) -> int:
         cfg.web_port = args.port
     if args.no_browser:
         cfg.open_browser = False
+
+    if args.diagnose:
+        from . import diagnose as diagnose_module
+
+        path = diagnose_module.run(cfg.data_dir)
+        print(f"\n결과가 저장되었습니다: {path}")
+        pause()
+        return 0
 
     if args.replay:
         return replay(cfg, args.replay)
@@ -260,16 +283,14 @@ def main(argv: list[str] | None = None) -> int:
 
     if not is_admin():
         print(ADMIN_HELP)
-        if os.name == "nt":
-            input("엔터를 누르면 창이 닫힙니다...")
+        pause()
         return 1
 
     try:
         return Application(cfg).run()
     except Exception as exc:  # 창이 즉시 닫혀 원인을 못 보는 일을 막는다
         print(f"\n오류가 발생했습니다: {exc}")
-        if os.name == "nt":
-            input("엔터를 누르면 창이 닫힙니다...")
+        pause()
         return 1
 
 

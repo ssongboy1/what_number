@@ -214,3 +214,60 @@ class ConsoleEncodingTest(unittest.TestCase):
             result.returncode, 0, f"한글 출력에서 죽었다:\n{result.stderr.decode('utf-8', 'replace')}"
         )
         self.assertIn("B-0042", result.stdout.decode("utf-8", "replace"))
+
+
+class DiagnoseTest(unittest.TestCase):
+    """진단은 읽기만 하며, 어떤 환경에서도 예외 없이 보고서를 만들어야 한다."""
+
+    def test_report_is_produced(self):
+        from what_number import diagnose
+
+        report = diagnose.build_report()
+        self.assertIn("포스 PC 진단 결과", report)
+        self.assertIn("기본 정보", report)
+
+    def test_writes_a_file(self):
+        import contextlib
+        import io
+        import tempfile
+        from pathlib import Path
+
+        from what_number import diagnose
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with contextlib.redirect_stdout(io.StringIO()):
+                path = diagnose.run(Path(tmp) / "data")
+            self.assertTrue(path.exists())
+            self.assertIn("진단결과", path.name)
+            self.assertIn("포스 PC 진단 결과", path.read_text(encoding="utf-8"))
+
+    def test_pause_does_not_raise_without_a_console(self):
+        """자동 실행이나 파이프 환경에서 input() 이 EOFError 를 던지면 안 된다."""
+        import io
+        from unittest import mock
+
+        from what_number.app import pause
+
+        with mock.patch("sys.stdin", io.StringIO("")):
+            pause()  # 예외가 나면 실패
+
+
+class KoreanEncodingTest(unittest.TestCase):
+    """한글 윈도우의 기본 인코딩(CP949)으로 출력할 수 없는 글자를 쓰면 안 된다.
+
+    화면에 찍는 순간 UnicodeEncodeError 로 프로그램이 죽는다. em dash 처럼
+    눈으로는 구분이 안 가는 글자가 원인이 되므로 자동으로 막는다.
+    """
+
+    def test_all_source_text_is_cp949_safe(self):
+        import pathlib
+
+        root = pathlib.Path(__file__).resolve().parents[1]
+        offenders = []
+        for path in list((root / "src").rglob("*.py")) + [root / "launcher.py"]:
+            for char in set(path.read_text(encoding="utf-8")):
+                try:
+                    char.encode("cp949")
+                except UnicodeEncodeError:
+                    offenders.append(f"{path.name}: U+{ord(char):04X} {char!r}")
+        self.assertEqual(offenders, [], "CP949 로 출력할 수 없는 글자가 있습니다")
