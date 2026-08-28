@@ -21,7 +21,9 @@ def app_dir() -> Path:
 @dataclass
 class Config:
     web_port: int = 8710
-    printer_ports: list[int] = field(default_factory=lambda: [9100, 9101, 9102, 515])
+    printer_ports: list[int] = field(
+        default_factory=lambda: [9100, 9101, 9102, 515, 9600, 4001, 6001]
+    )
     idle_seconds: float = 2.0
     dedup_window_seconds: float = 120.0
     retention_hours: float = 48.0

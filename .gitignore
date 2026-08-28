@@ -9,3 +9,4 @@ data/
 *.bin
 .pytest_cache/
 config.json
+dist/

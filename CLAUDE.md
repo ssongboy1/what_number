@@ -44,6 +44,8 @@ src/what_number/
   web.py         주문 화면 + 조회 API (http.server 사용)
   app.py         위를 엮어 실행
   demo.py        포스 없이 화면을 확인하기 위한 가짜 전표 생성
+  diagnose.py    COM 포트·포스 폴더·DB 위치 조사 (읽기 전용)
+  scan.py        모든 포트를 훑어 주문서가 어디로 나가는지 찾기
 ```
 
 ## 밟았던 함정 (다시 밟지 말 것)
@@ -109,6 +111,10 @@ exe 는 `.github/workflows/build-exe.yml` 이 윈도우에서 자동으로 만�
 전표 해석·주문 추출·저장·화면은 그대로 쓸 수 있고, 수집 계층만 교체하면 된다.
 
 ### 확인 방법
+
+`what_number.exe --scan` 이 가장 확실하다. 포트를 추측하지 않고 모든 TCP 통신을
+지켜보면서 ESC/POS 처럼 생긴 데이터가 어느 IP·포트로 가는지 집계해 알려준다.
+아무것도 안 잡히면 시리얼 연결이라는 뜻이다.
 
 `what_number.exe --diagnose` (또는 `--진단`) 를 **포스 PC** 에서 실행하면
 COM 포트 목록·이름, 프린터로 나가는 TCP 연결 유무, 포스 폴더와 DB 파일 위치가

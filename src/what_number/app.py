@@ -236,6 +236,51 @@ def setup_console() -> None:
             pass
 
 
+def scan(cfg: config_module.Config, seconds: int = 180) -> int:
+    """모든 포트를 지켜보며 주문서가 어디로 나가는지 찾아낸다."""
+    from .scan import Scanner
+
+    scanner = Scanner()
+    sniffer = RawSocketSniffer(scanner.add, ports=None, bind_ips=cfg.bind_ips or None)
+    sniffer.start()
+
+    print("=" * 72)
+    print("  주문서가 어디로 나가는지 찾는 중입니다")
+    print("=" * 72)
+    print(f"  감시 대상 : {', '.join(sniffer.bind_ips) or '(랜카드를 찾지 못했습니다)'}")
+    print(f"  감시 시간 : {seconds}초")
+    if sniffer.errors:
+        print("  ! " + "\n  ! ".join(sniffer.errors))
+    print()
+    print("  >>> 지금 포스에서 주문을 한 건 넣어주세요. <<<")
+    print()
+    print("  (끝날 때까지 기다리거나, Ctrl+C 를 눌러 바로 결과를 봅니다)")
+
+    deadline = time.time() + seconds
+    try:
+        while time.time() < deadline:
+            time.sleep(1.0)
+            left = int(deadline - time.time())
+            if left % 30 == 0 and left > 0:
+                print(f"  ... {left}초 남음 (패킷 {scanner.packets:,}개)")
+    except KeyboardInterrupt:
+        print("\n  중단했습니다.")
+    finally:
+        sniffer.stop()
+
+    report = scanner.report()
+    print(report)
+    try:
+        cfg.data_dir.mkdir(parents=True, exist_ok=True)
+        path = cfg.data_dir / f"포트탐색_{datetime.now():%Y%m%d_%H%M%S}.txt"
+        path.write_text(report, encoding="utf-8")
+        print(f"\n결과가 저장되었습니다: {path}")
+    except OSError:
+        pass
+    pause()
+    return 0
+
+
 def pause() -> None:
     """더블클릭으로 실행했을 때 창이 즉시 닫혀 내용을 못 보는 일을 막는다.
 
@@ -259,6 +304,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--demo", action="store_true", help="포스 없이 가짜 주문으로 화면만 확인")
     parser.add_argument("--진단", "--diagnose", dest="diagnose", action="store_true",
                         help="이 PC의 프린터 연결 방식과 주문 데이터 위치를 조사")
+    parser.add_argument("--탐색", "--scan", dest="scan", nargs="?", const=180, type=int,
+                        metavar="초", help="모든 포트를 지켜보며 주문서가 어디로 나가는지 찾기")
     args = parser.parse_args(argv)
 
     cfg = config_module.load()
@@ -285,6 +332,9 @@ def main(argv: list[str] | None = None) -> int:
         print(ADMIN_HELP)
         pause()
         return 1
+
+    if args.scan:
+        return scan(cfg, args.scan)
 
     try:
         return Application(cfg).run()

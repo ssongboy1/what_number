@@ -31,8 +31,11 @@ def is_admin() -> bool:
     return hasattr(os, "geteuid") and os.geteuid() == 0
 
 
-def parse_ipv4_tcp(packet: bytes, ports: Iterable[int], ts: float = 0.0) -> Segment | None:
-    """IPv4 패킷에서 TCP 정보를 뽑는다. 대상 포트가 아니면 None."""
+def parse_ipv4_tcp(packet: bytes, ports=None, ts: float = 0.0) -> Segment | None:
+    """IPv4 패킷에서 TCP 정보를 뽑는다.
+
+    ports 가 None 이면 모든 포트를 받는다(어느 포트로 나가는지 찾는 탐색용).
+    """
     if len(packet) < 20:
         return None
     version_ihl = packet[0]
@@ -52,7 +55,7 @@ def parse_ipv4_tcp(packet: bytes, ports: Iterable[int], ts: float = 0.0) -> Segm
 
     tcp = packet[ip_header_len:]
     src_port, dst_port, seq = struct.unpack("!HHI", tcp[:8])
-    if dst_port not in ports:
+    if ports is not None and dst_port not in ports:
         return None
     data_offset = (tcp[12] >> 4) * 4
     if data_offset < 20 or len(tcp) < data_offset:
@@ -105,11 +108,11 @@ class RawSocketSniffer:
     def __init__(
         self,
         on_segment: Callable[[Segment], None],
-        ports: Iterable[int] = (9100,),
+        ports: Iterable[int] | None = (9100,),
         bind_ips: Iterable[str] | None = None,
     ):
         self.on_segment = on_segment
-        self.ports = set(ports)
+        self.ports = set(ports) if ports is not None else None
         self.bind_ips = list(bind_ips) if bind_ips else local_ipv4_addresses()
         self._threads: list[threading.Thread] = []
         self._sockets: list[socket.socket] = []
