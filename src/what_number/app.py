@@ -267,11 +267,15 @@ def receive(cfg: config_module.Config, port: int = 9100) -> int:
         pause()
         return 1
 
-    print("  포스 프린터 설정에 아래처럼 한 줄 추가하세요.")
+    print("  포스 프린터 설정에서 [신규생성] 으로 한 줄 추가하세요.")
     print()
-    print("    프린터종류 : TCP/IP (또는 네트워크)")
-    print("    프린터포트 : 127.0.0.1")
+    print("    프린터종류 : NET-Bixolon계열")
+    print(f"    프린터포트 : {addresses[0] if addresses else '127.0.0.1'}   <- 이 PC 주소")
     print(f"    프린터속도 : {port}")
+    print()
+    print("  포스가 여러 대면 포스마다 한 줄씩 추가하되 주소는 모두 같게 하세요.")
+    print("  프린터속도 칸에 이 번호를 넣을 수 없으면, 넣을 수 있는 번호를 고른 뒤")
+    print("  프로그램을 그 번호로 다시 켜세요. 예: --receive 9600")
     print()
     print(f"  주문 화면 : http://127.0.0.1:{cfg.web_port}")
     for address in addresses:
