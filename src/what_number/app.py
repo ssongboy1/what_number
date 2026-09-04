@@ -236,6 +236,70 @@ def setup_console() -> None:
             pass
 
 
+def hall(cfg: config_module.Config, demo: bool = False) -> int:
+    """홀 태블릿 화면. 주문서를 체크해 나가는 화면이다."""
+    from .ticket_feed import TicketFeed
+    from .ticket_store import TicketStore
+
+    # 시연용 가짜 주문서가 실제 기록에 섞이면 안 되므로 파일을 따로 쓴다.
+    tickets = TicketStore(":memory:" if demo else cfg.data_dir / "tickets.db")
+    feed = TicketFeed(tickets)
+    dripper = None
+
+    if demo:
+        from . import sample_tickets
+
+        sample_tickets.seed(feed, 12)
+        dripper = sample_tickets.SampleDripper(feed, every_seconds=25.0)
+        dripper.start()
+
+    store = OrderStore(cfg.db_path, retention_hours=cfg.retention_hours)
+    try:
+        httpd, _ = serve(store, cfg.web_port, lambda: {"capturing": False}, tickets=tickets)
+    except OSError:
+        # 포트를 독점으로 열기 때문에, 이미 켜져 있으면 여기서 걸린다.
+        print()
+        print(f"  {cfg.web_port} 번을 이미 다른 프로그램이 쓰고 있습니다.")
+        print("  이 프로그램이 이미 켜져 있는지 확인해 보세요.")
+        print("  다른 번호로 켜려면:  what_number.exe --hall --port 8711")
+        if dripper is not None:
+            dripper.stop()
+        tickets.close()
+        store.close()
+        pause()
+        return 1
+
+    addresses = local_ipv4_addresses()
+    print("=" * 62)
+    print("  홀 주문서 화면")
+    print("=" * 62)
+    print(f"  이 PC에서 보기 : http://127.0.0.1:{cfg.web_port}/hall")
+    for address in addresses:
+        print(f"  태블릿에서 보기: http://{address}:{cfg.web_port}/hall")
+    if demo:
+        print()
+        print("  샘플 모드입니다. 가짜 주문서 12장을 넣었고, 25초마다 한 장씩 더 들어옵니다.")
+    print("-" * 62)
+    print("  끄려면 이 창을 닫으세요.")
+    print()
+
+    if cfg.open_browser:
+        webbrowser.open(f"http://127.0.0.1:{cfg.web_port}/hall")
+
+    try:
+        while True:
+            time.sleep(0.5)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        if dripper is not None:
+            dripper.stop()
+        httpd.shutdown()
+        tickets.close()
+        store.close()
+    return 0
+
+
 def receive(cfg: config_module.Config, port: int = 9100) -> int:
     """가상 프린터로 주문서를 받는다. 관리자 권한이 필요 없다."""
     from .receiver import PrinterReceiver
@@ -370,6 +434,8 @@ def main(argv: list[str] | None = None) -> int:
                         metavar="초", help="모든 포트를 지켜보며 주문서가 어디로 나가는지 찾기")
     parser.add_argument("--수신", "--receive", dest="receive", nargs="?", const=9100, type=int,
                         metavar="포트", help="가상 프린터가 되어 주문서를 받기 (관리자 권한 불필요)")
+    parser.add_argument("--홀", "--hall", dest="hall", action="store_true",
+                        help="홀 태블릿 주문서 체크 화면 (관리자 권한 불필요)")
     args = parser.parse_args(argv)
 
     cfg = config_module.load()
@@ -388,6 +454,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.replay:
         return replay(cfg, args.replay)
+
+    if args.hall:
+        return hall(cfg, demo=args.demo)
 
     if args.demo:
         return demo(cfg)
