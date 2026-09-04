@@ -236,6 +236,64 @@ def setup_console() -> None:
             pass
 
 
+def receive(cfg: config_module.Config, port: int = 9100) -> int:
+    """가상 프린터로 주문서를 받는다. 관리자 권한이 필요 없다."""
+    from .receiver import PrinterReceiver
+
+    app = Application(cfg)
+    receiver = PrinterReceiver(app._on_job, port=port, idle_seconds=cfg.idle_seconds)
+    started = receiver.start()
+
+    app._httpd, _ = serve(app.store, cfg.web_port, lambda: {
+        "capturing": receiver.running,
+        "jobs": receiver.jobs,
+        "printers": [f"가상프린터:{port}"],
+        "watching": [f"{port} 포트에서 대기 중"],
+        "ports": [port],
+        "errors": receiver.errors[-5:],
+    })
+    threading.Thread(target=app._maintenance, daemon=True).start()
+
+    addresses = local_ipv4_addresses()
+    print("=" * 62)
+    print("  가상 프린터로 받는 중")
+    print("=" * 62)
+    if not started:
+        for message in receiver.errors:
+            print("  ! " + message)
+        print(f"  {port} 포트를 다른 프로그램이 쓰고 있을 수 있습니다.")
+        print("  --receive 뒤에 다른 번호를 적어 보세요. 예: --receive 9101")
+        app.shutdown()
+        pause()
+        return 1
+
+    print("  포스 프린터 설정에 아래처럼 한 줄 추가하세요.")
+    print()
+    print("    프린터종류 : TCP/IP (또는 네트워크)")
+    print("    프린터포트 : 127.0.0.1")
+    print(f"    프린터속도 : {port}")
+    print()
+    print(f"  주문 화면 : http://127.0.0.1:{cfg.web_port}")
+    for address in addresses:
+        print(f"  주방 폰   : http://{address}:{cfg.web_port}")
+    print("-" * 62)
+    print("  주문이 들어오면 아래에 표시됩니다. 끄려면 이 창을 닫으세요.")
+    print()
+
+    if cfg.open_browser:
+        webbrowser.open(f"http://127.0.0.1:{cfg.web_port}")
+
+    try:
+        while True:
+            time.sleep(0.5)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        receiver.stop()
+        app.shutdown()
+    return 0
+
+
 def scan(cfg: config_module.Config, seconds: int = 180) -> int:
     """모든 포트를 지켜보며 주문서가 어디로 나가는지 찾아낸다."""
     from .scan import Scanner
@@ -306,6 +364,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="이 PC의 프린터 연결 방식과 주문 데이터 위치를 조사")
     parser.add_argument("--탐색", "--scan", dest="scan", nargs="?", const=180, type=int,
                         metavar="초", help="모든 포트를 지켜보며 주문서가 어디로 나가는지 찾기")
+    parser.add_argument("--수신", "--receive", dest="receive", nargs="?", const=9100, type=int,
+                        metavar="포트", help="가상 프린터가 되어 주문서를 받기 (관리자 권한 불필요)")
     args = parser.parse_args(argv)
 
     cfg = config_module.load()
@@ -327,6 +387,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.demo:
         return demo(cfg)
+
+    if args.receive:
+        return receive(cfg, args.receive)
 
     if not is_admin():
         print(ADMIN_HELP)
