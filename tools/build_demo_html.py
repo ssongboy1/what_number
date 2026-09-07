@@ -114,7 +114,8 @@ catch (e) {
   }});
 }
 
-const DEMO = {tickets: __TICKETS__, menus: __MENUS__, rev: 100};
+const DEMO = {tickets: __TICKETS__, menus: __MENUS__, rev: 100,
+              pool: __POOL__, tables: __TABLES__, nextId: 9000, nextItem: 90000, auto: null};
 const DEMO_START = JSON.parse(JSON.stringify(DEMO.tickets));
 
 function demoFindItem(id) {
@@ -132,10 +133,65 @@ function demoRecount(t) {
   DEMO.rev += 1;
   t.rev = DEMO.rev;
 }
+function demoPick(list) { return list[Math.floor(Math.random() * list.length)]; }
+
+function demoAddTicket(table) {
+  const size = 1 + Math.floor(Math.random() * 4);
+  const items = [];
+  for (let i = 0; i < size; i++) {
+    const entry = demoPick(DEMO.pool);
+    items.push({
+      id: DEMO.nextItem++, line_no: i + 1, menu: entry[0],
+      option: entry[1].length ? demoPick(entry[1]) : "",
+      qty: Math.random() < 0.97 ? 1 : 2, served: false, served_at: null,
+    });
+  }
+  const label = table || demoPick(DEMO.tables);
+  const id = DEMO.nextId++;
+  DEMO.rev += 1;
+  DEMO.tickets.push({
+    id: id, order_no: String(id) + "-0001", table: label,
+    table_key: label.replace(/[\\s-]/g, "").toLowerCase(),
+    kind: table ? "추가" : "신규", pos: "POS-01", station: "3가니",
+    received_at: Date.now() / 1000, ordered_at: Date.now() / 1000,
+    status: "open", item_count: items.length, served_count: 0,
+    rev: DEMO.rev, items: items,
+  });
+  return id;
+}
+
+// 한 장씩 시간차를 두고 들어오게 한다. 실제로는 이렇게 몰려 들어온다.
+function demoBurst(count, gapMs) {
+  let n = 0;
+  const step = () => {
+    demoAddTicket();
+    if (typeof refresh === "function") refresh();
+    if (++n < count) setTimeout(step, gapMs || 1200);
+  };
+  step();
+}
+
+function demoAuto() {
+  const btn = document.getElementById("demoAuto");
+  if (DEMO.auto) {
+    clearInterval(DEMO.auto); DEMO.auto = null;
+    btn.textContent = "자동 꺼짐";
+    btn.style.background = "#2b3446";
+  } else {
+    DEMO.auto = setInterval(() => { demoAddTicket(); refresh(); }, 6000);
+    btn.textContent = "자동 켜짐";
+    btn.style.background = "#4ade80";
+    btn.style.color = "#0d2417";
+  }
+}
+
 function demoReset() {
+  if (DEMO.auto) { clearInterval(DEMO.auto); DEMO.auto = null; }
   DEMO.tickets = JSON.parse(JSON.stringify(DEMO_START));
   DEMO.rev += 1;
-  if (typeof refresh === "function") refresh();
+  const btn = document.getElementById("demoAuto");
+  if (btn) { btn.textContent = "자동 꺼짐"; btn.style.background = "#2b3446"; btn.style.color = ""; }
+  if (typeof refresh === "function") { seenIds = null; refresh(); }
 }
 
 window.fetch = async function (url, options) {
@@ -192,10 +248,20 @@ window.addEventListener("load", function () {
   h.insertAdjacentHTML("afterend",
     '<span style="font-size:13px;font-weight:800;padding:4px 9px;border-radius:7px;' +
     'background:rgba(255,201,92,.18);color:#ffc95c">예시</span>');
-  const find = document.querySelector(".find");
-  find.insertAdjacentHTML("beforebegin",
-    '<button onclick="demoReset()" style="min-height:52px;padding:0 16px;border-radius:11px;' +
-    'background:#2b3446;font-size:15px;font-weight:700">처음으로</button>');
+  const style = "min-height:48px;padding:0 16px;border-radius:10px;background:#2b3446;" +
+                "font-size:15px;font-weight:700;white-space:nowrap;color:#f4f7fb;" +
+                "border:1px solid #3a465e";
+  document.querySelector("header").insertAdjacentHTML("afterend",
+    '<div style="display:flex;gap:8px;align-items:center;padding:8px 14px;' +
+    'background:#161b26;border-bottom:1px solid #2b3446">' +
+    '<span style="font-size:13px;color:#93a1b8;font-weight:700;margin-right:4px">' +
+    '시험용</span>' +
+    '<button onclick="demoAddTicket()" style="' + style + '">주문 1건</button>' +
+    '<button onclick="demoBurst(5)" style="' + style + '">연속 5건</button>' +
+    '<button id="demoAuto" onclick="demoAuto()" style="' + style + '">자동 꺼짐</button>' +
+    '<button onclick="demoReset()" style="' + style + '">처음으로</button>' +
+    '<span style="margin-left:auto;font-size:13px;color:#93a1b8">' +
+    '두 손가락으로 벌리면 글자가 커집니다</span></div>');
 });
 </script>
 """
@@ -203,9 +269,20 @@ window.addEventListener("load", function () {
 
 def main() -> int:
     tickets = make_tickets()
+    from what_number.sample_menu import MENUS, OPTIONS_BY_MENU
+
+    pool = [
+        [name, [opt for opt, _ in OPTIONS_BY_MENU.get(name, []) if opt]]
+        for name, _ in MENUS[:60]
+    ]
+    tables = ["%s-%d" % (floor, n) for floor in ("1층", "2층") for n in range(1, 31)]
+    tables += ["포장1", "포장2", "포장3"]
+
     shim = (
         SHIM.replace("__TICKETS__", json.dumps(tickets, ensure_ascii=False))
         .replace("__MENUS__", json.dumps(menu_rows(tickets), ensure_ascii=False))
+        .replace("__POOL__", json.dumps(pool, ensure_ascii=False))
+        .replace("__TABLES__", json.dumps(tables, ensure_ascii=False))
     )
     page = PAGE.replace("<script>", shim + BADGE + "<script>", 1)
     OUTPUT.write_text(page, encoding="utf-8")

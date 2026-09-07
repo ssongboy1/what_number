@@ -24,12 +24,16 @@
     gap:14px; padding:0 14px; background:rgba(17,20,27,.97);
     border-bottom:1px solid var(--line);
   }
-  h1 { font-size:20px; margin:0; font-weight:800; letter-spacing:-.02em; white-space:nowrap; }
-  .count { font-size:15px; color:var(--muted); font-weight:700; }
+  h1 { font-size:20px; margin:0; font-weight:800; letter-spacing:-.02em; white-space:nowrap;
+       flex:0 0 auto; }
+  .count { font-size:15px; color:var(--muted); font-weight:700; white-space:nowrap;
+           overflow:hidden; text-overflow:ellipsis; }
   .spacer { flex:1; }
 
-  .toggle { display:flex; border:1px solid var(--line2); border-radius:10px; overflow:hidden; }
-  .toggle button { padding:10px 16px; font-size:15px; font-weight:700; color:var(--muted); }
+  .toggle { display:flex; border:1px solid var(--line2); border-radius:10px; overflow:hidden;
+            flex:0 0 auto; }
+  .toggle button { padding:10px 13px; font-size:15px; font-weight:700; color:var(--muted);
+                   white-space:nowrap; }
   .toggle button.on { background:var(--accent); color:var(--accent-ink); }
 
   .find {
@@ -114,6 +118,32 @@
   .hit .m .mine { color:var(--accent); font-weight:800; }
   .hit .m .gone { text-decoration:line-through; opacity:.45; }
 
+  /* 새 주문 알림 */
+  .flash { position:fixed; inset:0; z-index:80; pointer-events:none; opacity:0;
+           background:var(--accent); }
+  .flash.on { animation:flash .7s ease-out 2; }
+  @keyframes flash { 0%{opacity:0} 25%{opacity:.30} 100%{opacity:0} }
+
+  .card.fresh { animation:cardin 2.4s ease-out; }
+  @keyframes cardin {
+    0%   { box-shadow:0 0 0 4px var(--accent); transform:scale(1.015); }
+    100% { box-shadow:0 0 0 0 rgba(255,201,92,0); transform:scale(1); }
+  }
+
+  /* 카드를 가리지 않도록 머리말 아래 띠로 붙인다 */
+  .pending { position:sticky; top:64px; z-index:35; display:none;
+             background:var(--accent); color:var(--accent-ink);
+             padding:16px; font-size:21px; font-weight:800; text-align:center;
+             box-shadow:0 4px 14px rgba(0,0,0,.4); animation:pulse 1.8s ease-in-out infinite; }
+  .pending.show { display:block; }
+  @keyframes pulse { 0%,100%{filter:brightness(1)} 50%{filter:brightness(.88)} }
+
+  .zoom { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); z-index:85;
+          background:rgba(0,0,0,.78); color:#fff; border-radius:16px; padding:18px 28px;
+          font-size:34px; font-weight:800; opacity:0; transition:opacity .15s;
+          pointer-events:none; }
+  .zoom.show { opacity:1; }
+
   .offline { position:fixed; inset:0; z-index:90; background:rgba(10,12,17,.93); display:none;
              align-items:center; justify-content:center; text-align:center; font-size:22px;
              font-weight:800; line-height:1.8; }
@@ -129,8 +159,16 @@
     <button id="byTicket" onclick="setView('ticket')">주문서별</button>
     <button id="byTable" onclick="setView('table')">테이블별</button>
   </div>
+  <div class="toggle">
+    <button id="autoAdd" onclick="setHold(false)">바로 넣기</button>
+    <button id="holdNew" onclick="setHold(true)">모아두기</button>
+  </div>
   <button class="find" onclick="openFind()">메뉴<br>찾기</button>
 </header>
+
+<div class="pending" id="pending" onclick="showPending()"></div>
+<div class="flash" id="flash"></div>
+<div class="zoom" id="zoomHint"></div>
 
 <main id="board"></main>
 
@@ -170,7 +208,8 @@ catch (e) {
   }});
 }
 
-const DEMO = {tickets: [{"id": 1, "order_no": "0001-0001", "table": "2층-9", "table_key": "2층9", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788507485.0473135, "ordered_at": 1788507485.0473135, "status": "open", "item_count": 2, "served_count": 0, "rev": 1, "items": [{"id": 1, "line_no": 1, "menu": "봉골레 파스타", "option": "약", "qty": 1, "served": false, "served_at": null}, {"id": 2, "line_no": 2, "menu": "모짜렐라 샐러드", "option": "페퍼로니 드레싱(추천)", "qty": 1, "served": false, "served_at": null}]}, {"id": 3, "order_no": "0003-0001", "table": "2층-2", "table_key": "2층2", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788508097.0473135, "ordered_at": 1788508097.0473135, "status": "open", "item_count": 5, "served_count": 0, "rev": 3, "items": [{"id": 9, "line_no": 1, "menu": "포크 찹 스테이크", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 10, "line_no": 2, "menu": "스위트 피자", "option": "Small", "qty": 1, "served": false, "served_at": null}, {"id": 11, "line_no": 3, "menu": "삼겹살 스테이크", "option": "순한맛", "qty": 1, "served": false, "served_at": null}, {"id": 12, "line_no": 4, "menu": "삼겹살 스테이크", "option": "순한맛", "qty": 1, "served": false, "served_at": null}, {"id": 13, "line_no": 5, "menu": "투움바 파스타", "option": "갈릭스틱", "qty": 1, "served": false, "served_at": null}]}, {"id": 2, "order_no": "0002-0001", "table": "1층-18", "table_key": "1층18", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788508437.0473135, "ordered_at": 1788508437.0473135, "status": "open", "item_count": 6, "served_count": 0, "rev": 2, "items": [{"id": 3, "line_no": 1, "menu": "바베큐 폭립", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 4, "line_no": 2, "menu": "빠네 크림 파스타", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 5, "line_no": 3, "menu": "포크 스테이크", "option": "매운맛", "qty": 1, "served": false, "served_at": null}, {"id": 6, "line_no": 4, "menu": "추가퐁듀", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 7, "line_no": 5, "menu": "모짜렐라 샐러드", "option": "발사믹 드레싱", "qty": 1, "served": false, "served_at": null}, {"id": 8, "line_no": 6, "menu": "수제 함박 스테이크", "option": "", "qty": 1, "served": false, "served_at": null}]}, {"id": 8, "order_no": "0008-0001", "table": "포장2", "table_key": "포장2", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788508857.0473135, "ordered_at": 1788508857.0473135, "status": "open", "item_count": 3, "served_count": 0, "rev": 8, "items": [{"id": 28, "line_no": 1, "menu": "해물 스파이시 필라프", "option": "약", "qty": 1, "served": false, "served_at": null}, {"id": 29, "line_no": 2, "menu": "베이컨 새우 로제 파스타", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 30, "line_no": 3, "menu": "포크 스테이크", "option": "순한맛", "qty": 1, "served": false, "served_at": null}]}, {"id": 4, "order_no": "0004-0001", "table": "2층-12", "table_key": "2층12", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788508937.0473135, "ordered_at": 1788508937.0473135, "status": "open", "item_count": 2, "served_count": 0, "rev": 4, "items": [{"id": 14, "line_no": 1, "menu": "아라비아따 파스타", "option": "중", "qty": 1, "served": false, "served_at": null}, {"id": 15, "line_no": 2, "menu": "빠네 로제 파스타", "option": "", "qty": 1, "served": false, "served_at": null}]}, {"id": 7, "order_no": "0007-0001", "table": "2층-1", "table_key": "2층1", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788509121.0473135, "ordered_at": 1788509121.0473135, "status": "open", "item_count": 3, "served_count": 0, "rev": 7, "items": [{"id": 25, "line_no": 1, "menu": "목살 필라프", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 26, "line_no": 2, "menu": "치아바타 샌드위치 [천연발효]", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 27, "line_no": 3, "menu": "포크 스테이크", "option": "순한맛", "qty": 1, "served": false, "served_at": null}]}, {"id": 5, "order_no": "0005-0001", "table": "1층-25", "table_key": "1층25", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788509207.0473135, "ordered_at": 1788509207.0473135, "status": "open", "item_count": 5, "served_count": 0, "rev": 5, "items": [{"id": 16, "line_no": 1, "menu": "빠네 크림 파스타", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 17, "line_no": 2, "menu": "바질 크림 치즈 피자", "option": "Large", "qty": 1, "served": false, "served_at": null}, {"id": 18, "line_no": 3, "menu": "치킨 텐더 샐러드", "option": "레몬 요거트 드레싱(추천)", "qty": 1, "served": false, "served_at": null}, {"id": 19, "line_no": 4, "menu": "고르곤졸라 피자", "option": "Large", "qty": 1, "served": false, "served_at": null}, {"id": 20, "line_no": 5, "menu": "까르보나라", "option": "", "qty": 1, "served": false, "served_at": null}]}, {"id": 10, "order_no": "0010-0001", "table": "2층-6", "table_key": "2층6", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788509372.0473135, "ordered_at": 1788509372.0473135, "status": "open", "item_count": 6, "served_count": 0, "rev": 10, "items": [{"id": 35, "line_no": 1, "menu": "봉골레 크림 파스타", "option": "중", "qty": 1, "served": false, "served_at": null}, {"id": 36, "line_no": 2, "menu": "바질 페스토 리조또", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 37, "line_no": 3, "menu": "봉골레 크림 파스타", "option": "중", "qty": 1, "served": false, "served_at": null}, {"id": 38, "line_no": 4, "menu": "빠네 로제 파스타", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 39, "line_no": 5, "menu": "레몬 에이드", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 40, "line_no": 6, "menu": "빠네 크림 파스타", "option": "", "qty": 1, "served": false, "served_at": null}]}, {"id": 9, "order_no": "0009-0001", "table": "1층-28", "table_key": "1층28", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788509453.0473135, "ordered_at": 1788509453.0473135, "status": "open", "item_count": 4, "served_count": 0, "rev": 9, "items": [{"id": 31, "line_no": 1, "menu": "봉골레 크림 파스타", "option": "중", "qty": 1, "served": false, "served_at": null}, {"id": 32, "line_no": 2, "menu": "바질 페스토 리조또", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 33, "line_no": 3, "menu": "치킨 토마토 파스타", "option": "", "qty": 3, "served": false, "served_at": null}, {"id": 34, "line_no": 4, "menu": "감바스 크림 파스타", "option": "", "qty": 1, "served": false, "served_at": null}]}, {"id": 6, "order_no": "0006-0001", "table": "포장1", "table_key": "포장1", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788509591.0473135, "ordered_at": 1788509591.0473135, "status": "open", "item_count": 4, "served_count": 0, "rev": 6, "items": [{"id": 21, "line_no": 1, "menu": "카페라떼 [스페셜 티 원두]", "option": "ICE + 먹고가기", "qty": 1, "served": false, "served_at": null}, {"id": 22, "line_no": 2, "menu": "봉골레 파스타", "option": "강 + 불고기 토핑 추가", "qty": 1, "served": false, "served_at": null}, {"id": 23, "line_no": 3, "menu": "핫 까르보나라", "option": "중", "qty": 1, "served": false, "served_at": null}, {"id": 24, "line_no": 4, "menu": "갈릭 포크 스테이크", "option": "순한맛", "qty": 1, "served": false, "served_at": null}]}, {"id": 11, "order_no": "0011-0001", "table": "1층-2", "table_key": "1층2", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788509721.0473135, "ordered_at": 1788509721.0473135, "status": "open", "item_count": 2, "served_count": 0, "rev": 11, "items": [{"id": 41, "line_no": 1, "menu": "아라비아따 파스타", "option": "중", "qty": 1, "served": false, "served_at": null}, {"id": 42, "line_no": 2, "menu": "삿포로생맥주", "option": "", "qty": 1, "served": false, "served_at": null}]}, {"id": 12, "order_no": "0012-0001", "table": "2층-16", "table_key": "2층16", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788509735.0473135, "ordered_at": 1788509735.0473135, "status": "open", "item_count": 1, "served_count": 0, "rev": 12, "items": [{"id": 43, "line_no": 1, "menu": "까르보나라", "option": "", "qty": 1, "served": false, "served_at": null}]}, {"id": 13, "order_no": "0013-0001", "table": "1층-9", "table_key": "1층9", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788510039.0473135, "ordered_at": 1788510039.0473135, "status": "open", "item_count": 3, "served_count": 0, "rev": 13, "items": [{"id": 44, "line_no": 1, "menu": "브레드 이발소 포도,사과", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 45, "line_no": 2, "menu": "봉골레 파스타", "option": "강", "qty": 1, "served": false, "served_at": null}, {"id": 46, "line_no": 3, "menu": "갈릭 포크 스테이크", "option": "순한맛", "qty": 1, "served": false, "served_at": null}]}, {"id": 15, "order_no": "0001-0002", "table": "2층-9", "table_key": "2층9", "kind": "추가", "pos": "POS-05", "station": "3가니", "received_at": 1788510137.0473135, "ordered_at": 1788510137.0473135, "status": "open", "item_count": 2, "served_count": 0, "rev": 15, "items": [{"id": 53, "line_no": 1, "menu": "빠네 로제 파스타", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 54, "line_no": 2, "menu": "빠네 로제 파스타", "option": "", "qty": 3, "served": false, "served_at": null}]}, {"id": 14, "order_no": "0014-0001", "table": "1층-17", "table_key": "1층17", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788510158.0473135, "ordered_at": 1788510158.0473135, "status": "open", "item_count": 6, "served_count": 0, "rev": 14, "items": [{"id": 47, "line_no": 1, "menu": "바질 크림 치즈 피자", "option": "Small", "qty": 1, "served": false, "served_at": null}, {"id": 48, "line_no": 2, "menu": "해물 토마토 파스타", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 49, "line_no": 3, "menu": "프렌치 토스트", "option": "(ICE) 아메리카노 [스페셜티 원두]", "qty": 1, "served": false, "served_at": null}, {"id": 50, "line_no": 4, "menu": "스위트 피자", "option": "Large", "qty": 1, "served": false, "served_at": null}, {"id": 51, "line_no": 5, "menu": "핫 까르보나라", "option": "중", "qty": 1, "served": false, "served_at": null}, {"id": 52, "line_no": 6, "menu": "알리오 올리오 파스타", "option": "중", "qty": 1, "served": false, "served_at": null}]}], menus: [{"menu": "빠네 로제 파스타", "count": 4, "cho": "ㅃㄴ ㄹㅈ ㅍㅅㅌ"}, {"menu": "봉골레 크림 파스타", "count": 3, "cho": "ㅂㄱㄹ ㅋㄹ ㅍㅅㅌ"}, {"menu": "봉골레 파스타", "count": 3, "cho": "ㅂㄱㄹ ㅍㅅㅌ"}, {"menu": "빠네 크림 파스타", "count": 3, "cho": "ㅃㄴ ㅋㄹ ㅍㅅㅌ"}, {"menu": "포크 스테이크", "count": 3, "cho": "ㅍㅋ ㅅㅌㅇㅋ"}, {"menu": "갈릭 포크 스테이크", "count": 2, "cho": "ㄱㄹ ㅍㅋ ㅅㅌㅇㅋ"}, {"menu": "까르보나라", "count": 2, "cho": "ㄲㄹㅂㄴㄹ"}, {"menu": "모짜렐라 샐러드", "count": 2, "cho": "ㅁㅉㄹㄹ ㅅㄹㄷ"}, {"menu": "바질 크림 치즈 피자", "count": 2, "cho": "ㅂㅈ ㅋㄹ ㅊㅈ ㅍㅈ"}, {"menu": "바질 페스토 리조또", "count": 2, "cho": "ㅂㅈ ㅍㅅㅌ ㄹㅈㄸ"}, {"menu": "삼겹살 스테이크", "count": 2, "cho": "ㅅㄱㅅ ㅅㅌㅇㅋ"}, {"menu": "스위트 피자", "count": 2, "cho": "ㅅㅇㅌ ㅍㅈ"}, {"menu": "아라비아따 파스타", "count": 2, "cho": "ㅇㄹㅂㅇㄸ ㅍㅅㅌ"}, {"menu": "핫 까르보나라", "count": 2, "cho": "ㅎ ㄲㄹㅂㄴㄹ"}, {"menu": "감바스 크림 파스타", "count": 1, "cho": "ㄱㅂㅅ ㅋㄹ ㅍㅅㅌ"}, {"menu": "고르곤졸라 피자", "count": 1, "cho": "ㄱㄹㄱㅈㄹ ㅍㅈ"}, {"menu": "레몬 에이드", "count": 1, "cho": "ㄹㅁ ㅇㅇㄷ"}, {"menu": "목살 필라프", "count": 1, "cho": "ㅁㅅ ㅍㄹㅍ"}, {"menu": "바베큐 폭립", "count": 1, "cho": "ㅂㅂㅋ ㅍㄹ"}, {"menu": "베이컨 새우 로제 파스타", "count": 1, "cho": "ㅂㅇㅋ ㅅㅇ ㄹㅈ ㅍㅅㅌ"}, {"menu": "브레드 이발소 포도,사과", "count": 1, "cho": "ㅂㄹㄷ ㅇㅂㅅ ㅍㄷ,ㅅㄱ"}, {"menu": "삿포로생맥주", "count": 1, "cho": "ㅅㅍㄹㅅㅁㅈ"}, {"menu": "수제 함박 스테이크", "count": 1, "cho": "ㅅㅈ ㅎㅂ ㅅㅌㅇㅋ"}, {"menu": "알리오 올리오 파스타", "count": 1, "cho": "ㅇㄹㅇ ㅇㄹㅇ ㅍㅅㅌ"}, {"menu": "추가퐁듀", "count": 1, "cho": "ㅊㄱㅍㄷ"}, {"menu": "치아바타 샌드위치 [천연발효]", "count": 1, "cho": "ㅊㅇㅂㅌ ㅅㄷㅇㅊ [ㅊㅇㅂㅎ]"}, {"menu": "치킨 텐더 샐러드", "count": 1, "cho": "ㅊㅋ ㅌㄷ ㅅㄹㄷ"}, {"menu": "치킨 토마토 파스타", "count": 1, "cho": "ㅊㅋ ㅌㅁㅌ ㅍㅅㅌ"}, {"menu": "카페라떼 [스페셜 티 원두]", "count": 1, "cho": "ㅋㅍㄹㄸ [ㅅㅍㅅ ㅌ ㅇㄷ]"}, {"menu": "투움바 파스타", "count": 1, "cho": "ㅌㅇㅂ ㅍㅅㅌ"}, {"menu": "포크 찹 스테이크", "count": 1, "cho": "ㅍㅋ ㅊ ㅅㅌㅇㅋ"}, {"menu": "프렌치 토스트", "count": 1, "cho": "ㅍㄹㅊ ㅌㅅㅌ"}, {"menu": "해물 스파이시 필라프", "count": 1, "cho": "ㅎㅁ ㅅㅍㅇㅅ ㅍㄹㅍ"}, {"menu": "해물 토마토 파스타", "count": 1, "cho": "ㅎㅁ ㅌㅁㅌ ㅍㅅㅌ"}], rev: 100};
+const DEMO = {tickets: [{"id": 1, "order_no": "0001-0001", "table": "2층-9", "table_key": "2층9", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788766387.5955586, "ordered_at": 1788766387.5955586, "status": "open", "item_count": 2, "served_count": 0, "rev": 1, "items": [{"id": 1, "line_no": 1, "menu": "봉골레 파스타", "option": "약", "qty": 1, "served": false, "served_at": null}, {"id": 2, "line_no": 2, "menu": "모짜렐라 샐러드", "option": "페퍼로니 드레싱(추천)", "qty": 1, "served": false, "served_at": null}]}, {"id": 3, "order_no": "0003-0001", "table": "2층-2", "table_key": "2층2", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788766999.5955586, "ordered_at": 1788766999.5955586, "status": "open", "item_count": 5, "served_count": 0, "rev": 3, "items": [{"id": 9, "line_no": 1, "menu": "포크 찹 스테이크", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 10, "line_no": 2, "menu": "스위트 피자", "option": "Small", "qty": 1, "served": false, "served_at": null}, {"id": 11, "line_no": 3, "menu": "삼겹살 스테이크", "option": "순한맛", "qty": 1, "served": false, "served_at": null}, {"id": 12, "line_no": 4, "menu": "삼겹살 스테이크", "option": "순한맛", "qty": 1, "served": false, "served_at": null}, {"id": 13, "line_no": 5, "menu": "투움바 파스타", "option": "갈릭스틱", "qty": 1, "served": false, "served_at": null}]}, {"id": 2, "order_no": "0002-0001", "table": "1층-18", "table_key": "1층18", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788767339.5955586, "ordered_at": 1788767339.5955586, "status": "open", "item_count": 6, "served_count": 0, "rev": 2, "items": [{"id": 3, "line_no": 1, "menu": "바베큐 폭립", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 4, "line_no": 2, "menu": "빠네 크림 파스타", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 5, "line_no": 3, "menu": "포크 스테이크", "option": "매운맛", "qty": 1, "served": false, "served_at": null}, {"id": 6, "line_no": 4, "menu": "추가퐁듀", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 7, "line_no": 5, "menu": "모짜렐라 샐러드", "option": "발사믹 드레싱", "qty": 1, "served": false, "served_at": null}, {"id": 8, "line_no": 6, "menu": "수제 함박 스테이크", "option": "", "qty": 1, "served": false, "served_at": null}]}, {"id": 8, "order_no": "0008-0001", "table": "포장2", "table_key": "포장2", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788767759.5955586, "ordered_at": 1788767759.5955586, "status": "open", "item_count": 3, "served_count": 0, "rev": 8, "items": [{"id": 28, "line_no": 1, "menu": "해물 스파이시 필라프", "option": "약", "qty": 1, "served": false, "served_at": null}, {"id": 29, "line_no": 2, "menu": "베이컨 새우 로제 파스타", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 30, "line_no": 3, "menu": "포크 스테이크", "option": "순한맛", "qty": 1, "served": false, "served_at": null}]}, {"id": 4, "order_no": "0004-0001", "table": "2층-12", "table_key": "2층12", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788767839.5955586, "ordered_at": 1788767839.5955586, "status": "open", "item_count": 2, "served_count": 0, "rev": 4, "items": [{"id": 14, "line_no": 1, "menu": "아라비아따 파스타", "option": "중", "qty": 1, "served": false, "served_at": null}, {"id": 15, "line_no": 2, "menu": "빠네 로제 파스타", "option": "", "qty": 1, "served": false, "served_at": null}]}, {"id": 7, "order_no": "0007-0001", "table": "2층-1", "table_key": "2층1", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788768023.5955586, "ordered_at": 1788768023.5955586, "status": "open", "item_count": 3, "served_count": 0, "rev": 7, "items": [{"id": 25, "line_no": 1, "menu": "목살 필라프", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 26, "line_no": 2, "menu": "치아바타 샌드위치 [천연발효]", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 27, "line_no": 3, "menu": "포크 스테이크", "option": "순한맛", "qty": 1, "served": false, "served_at": null}]}, {"id": 5, "order_no": "0005-0001", "table": "1층-25", "table_key": "1층25", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788768109.5955586, "ordered_at": 1788768109.5955586, "status": "open", "item_count": 5, "served_count": 0, "rev": 5, "items": [{"id": 16, "line_no": 1, "menu": "빠네 크림 파스타", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 17, "line_no": 2, "menu": "바질 크림 치즈 피자", "option": "Large", "qty": 1, "served": false, "served_at": null}, {"id": 18, "line_no": 3, "menu": "치킨 텐더 샐러드", "option": "레몬 요거트 드레싱(추천)", "qty": 1, "served": false, "served_at": null}, {"id": 19, "line_no": 4, "menu": "고르곤졸라 피자", "option": "Large", "qty": 1, "served": false, "served_at": null}, {"id": 20, "line_no": 5, "menu": "까르보나라", "option": "", "qty": 1, "served": false, "served_at": null}]}, {"id": 10, "order_no": "0010-0001", "table": "2층-6", "table_key": "2층6", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788768274.5955586, "ordered_at": 1788768274.5955586, "status": "open", "item_count": 6, "served_count": 0, "rev": 10, "items": [{"id": 35, "line_no": 1, "menu": "봉골레 크림 파스타", "option": "중", "qty": 1, "served": false, "served_at": null}, {"id": 36, "line_no": 2, "menu": "바질 페스토 리조또", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 37, "line_no": 3, "menu": "봉골레 크림 파스타", "option": "중", "qty": 1, "served": false, "served_at": null}, {"id": 38, "line_no": 4, "menu": "빠네 로제 파스타", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 39, "line_no": 5, "menu": "레몬 에이드", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 40, "line_no": 6, "menu": "빠네 크림 파스타", "option": "", "qty": 1, "served": false, "served_at": null}]}, {"id": 9, "order_no": "0009-0001", "table": "1층-28", "table_key": "1층28", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788768355.5955586, "ordered_at": 1788768355.5955586, "status": "open", "item_count": 4, "served_count": 0, "rev": 9, "items": [{"id": 31, "line_no": 1, "menu": "봉골레 크림 파스타", "option": "중", "qty": 1, "served": false, "served_at": null}, {"id": 32, "line_no": 2, "menu": "바질 페스토 리조또", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 33, "line_no": 3, "menu": "치킨 토마토 파스타", "option": "", "qty": 3, "served": false, "served_at": null}, {"id": 34, "line_no": 4, "menu": "감바스 크림 파스타", "option": "", "qty": 1, "served": false, "served_at": null}]}, {"id": 6, "order_no": "0006-0001", "table": "포장1", "table_key": "포장1", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788768493.5955586, "ordered_at": 1788768493.5955586, "status": "open", "item_count": 4, "served_count": 0, "rev": 6, "items": [{"id": 21, "line_no": 1, "menu": "카페라떼 [스페셜 티 원두]", "option": "ICE + 먹고가기", "qty": 1, "served": false, "served_at": null}, {"id": 22, "line_no": 2, "menu": "봉골레 파스타", "option": "강 + 불고기 토핑 추가", "qty": 1, "served": false, "served_at": null}, {"id": 23, "line_no": 3, "menu": "핫 까르보나라", "option": "중", "qty": 1, "served": false, "served_at": null}, {"id": 24, "line_no": 4, "menu": "갈릭 포크 스테이크", "option": "순한맛", "qty": 1, "served": false, "served_at": null}]}, {"id": 11, "order_no": "0011-0001", "table": "1층-2", "table_key": "1층2", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788768623.5955586, "ordered_at": 1788768623.5955586, "status": "open", "item_count": 2, "served_count": 0, "rev": 11, "items": [{"id": 41, "line_no": 1, "menu": "아라비아따 파스타", "option": "중", "qty": 1, "served": false, "served_at": null}, {"id": 42, "line_no": 2, "menu": "삿포로생맥주", "option": "", "qty": 1, "served": false, "served_at": null}]}, {"id": 12, "order_no": "0012-0001", "table": "2층-16", "table_key": "2층16", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788768637.5955586, "ordered_at": 1788768637.5955586, "status": "open", "item_count": 1, "served_count": 0, "rev": 12, "items": [{"id": 43, "line_no": 1, "menu": "까르보나라", "option": "", "qty": 1, "served": false, "served_at": null}]}, {"id": 13, "order_no": "0013-0001", "table": "1층-9", "table_key": "1층9", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788768941.5955586, "ordered_at": 1788768941.5955586, "status": "open", "item_count": 3, "served_count": 0, "rev": 13, "items": [{"id": 44, "line_no": 1, "menu": "브레드 이발소 포도,사과", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 45, "line_no": 2, "menu": "봉골레 파스타", "option": "강", "qty": 1, "served": false, "served_at": null}, {"id": 46, "line_no": 3, "menu": "갈릭 포크 스테이크", "option": "순한맛", "qty": 1, "served": false, "served_at": null}]}, {"id": 15, "order_no": "0001-0002", "table": "2층-9", "table_key": "2층9", "kind": "추가", "pos": "POS-05", "station": "3가니", "received_at": 1788769039.5955586, "ordered_at": 1788769039.5955586, "status": "open", "item_count": 2, "served_count": 0, "rev": 15, "items": [{"id": 53, "line_no": 1, "menu": "빠네 로제 파스타", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 54, "line_no": 2, "menu": "빠네 로제 파스타", "option": "", "qty": 3, "served": false, "served_at": null}]}, {"id": 14, "order_no": "0014-0001", "table": "1층-17", "table_key": "1층17", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788769060.5955586, "ordered_at": 1788769060.5955586, "status": "open", "item_count": 6, "served_count": 0, "rev": 14, "items": [{"id": 47, "line_no": 1, "menu": "바질 크림 치즈 피자", "option": "Small", "qty": 1, "served": false, "served_at": null}, {"id": 48, "line_no": 2, "menu": "해물 토마토 파스타", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 49, "line_no": 3, "menu": "프렌치 토스트", "option": "(ICE) 아메리카노 [스페셜티 원두]", "qty": 1, "served": false, "served_at": null}, {"id": 50, "line_no": 4, "menu": "스위트 피자", "option": "Large", "qty": 1, "served": false, "served_at": null}, {"id": 51, "line_no": 5, "menu": "핫 까르보나라", "option": "중", "qty": 1, "served": false, "served_at": null}, {"id": 52, "line_no": 6, "menu": "알리오 올리오 파스타", "option": "중", "qty": 1, "served": false, "served_at": null}]}], menus: [{"menu": "빠네 로제 파스타", "count": 4, "cho": "ㅃㄴ ㄹㅈ ㅍㅅㅌ"}, {"menu": "봉골레 크림 파스타", "count": 3, "cho": "ㅂㄱㄹ ㅋㄹ ㅍㅅㅌ"}, {"menu": "봉골레 파스타", "count": 3, "cho": "ㅂㄱㄹ ㅍㅅㅌ"}, {"menu": "빠네 크림 파스타", "count": 3, "cho": "ㅃㄴ ㅋㄹ ㅍㅅㅌ"}, {"menu": "포크 스테이크", "count": 3, "cho": "ㅍㅋ ㅅㅌㅇㅋ"}, {"menu": "갈릭 포크 스테이크", "count": 2, "cho": "ㄱㄹ ㅍㅋ ㅅㅌㅇㅋ"}, {"menu": "까르보나라", "count": 2, "cho": "ㄲㄹㅂㄴㄹ"}, {"menu": "모짜렐라 샐러드", "count": 2, "cho": "ㅁㅉㄹㄹ ㅅㄹㄷ"}, {"menu": "바질 크림 치즈 피자", "count": 2, "cho": "ㅂㅈ ㅋㄹ ㅊㅈ ㅍㅈ"}, {"menu": "바질 페스토 리조또", "count": 2, "cho": "ㅂㅈ ㅍㅅㅌ ㄹㅈㄸ"}, {"menu": "삼겹살 스테이크", "count": 2, "cho": "ㅅㄱㅅ ㅅㅌㅇㅋ"}, {"menu": "스위트 피자", "count": 2, "cho": "ㅅㅇㅌ ㅍㅈ"}, {"menu": "아라비아따 파스타", "count": 2, "cho": "ㅇㄹㅂㅇㄸ ㅍㅅㅌ"}, {"menu": "핫 까르보나라", "count": 2, "cho": "ㅎ ㄲㄹㅂㄴㄹ"}, {"menu": "감바스 크림 파스타", "count": 1, "cho": "ㄱㅂㅅ ㅋㄹ ㅍㅅㅌ"}, {"menu": "고르곤졸라 피자", "count": 1, "cho": "ㄱㄹㄱㅈㄹ ㅍㅈ"}, {"menu": "레몬 에이드", "count": 1, "cho": "ㄹㅁ ㅇㅇㄷ"}, {"menu": "목살 필라프", "count": 1, "cho": "ㅁㅅ ㅍㄹㅍ"}, {"menu": "바베큐 폭립", "count": 1, "cho": "ㅂㅂㅋ ㅍㄹ"}, {"menu": "베이컨 새우 로제 파스타", "count": 1, "cho": "ㅂㅇㅋ ㅅㅇ ㄹㅈ ㅍㅅㅌ"}, {"menu": "브레드 이발소 포도,사과", "count": 1, "cho": "ㅂㄹㄷ ㅇㅂㅅ ㅍㄷ,ㅅㄱ"}, {"menu": "삿포로생맥주", "count": 1, "cho": "ㅅㅍㄹㅅㅁㅈ"}, {"menu": "수제 함박 스테이크", "count": 1, "cho": "ㅅㅈ ㅎㅂ ㅅㅌㅇㅋ"}, {"menu": "알리오 올리오 파스타", "count": 1, "cho": "ㅇㄹㅇ ㅇㄹㅇ ㅍㅅㅌ"}, {"menu": "추가퐁듀", "count": 1, "cho": "ㅊㄱㅍㄷ"}, {"menu": "치아바타 샌드위치 [천연발효]", "count": 1, "cho": "ㅊㅇㅂㅌ ㅅㄷㅇㅊ [ㅊㅇㅂㅎ]"}, {"menu": "치킨 텐더 샐러드", "count": 1, "cho": "ㅊㅋ ㅌㄷ ㅅㄹㄷ"}, {"menu": "치킨 토마토 파스타", "count": 1, "cho": "ㅊㅋ ㅌㅁㅌ ㅍㅅㅌ"}, {"menu": "카페라떼 [스페셜 티 원두]", "count": 1, "cho": "ㅋㅍㄹㄸ [ㅅㅍㅅ ㅌ ㅇㄷ]"}, {"menu": "투움바 파스타", "count": 1, "cho": "ㅌㅇㅂ ㅍㅅㅌ"}, {"menu": "포크 찹 스테이크", "count": 1, "cho": "ㅍㅋ ㅊ ㅅㅌㅇㅋ"}, {"menu": "프렌치 토스트", "count": 1, "cho": "ㅍㄹㅊ ㅌㅅㅌ"}, {"menu": "해물 스파이시 필라프", "count": 1, "cho": "ㅎㅁ ㅅㅍㅇㅅ ㅍㄹㅍ"}, {"menu": "해물 토마토 파스타", "count": 1, "cho": "ㅎㅁ ㅌㅁㅌ ㅍㅅㅌ"}], rev: 100,
+              pool: [["고르곤졸라 피자", ["Small", "Large", "Small + 피자치즈 추가", "Large + 피자치즈 추가"]], ["더블 포크 스테이크", ["순한맛", "매운맛", "(ICE) 아메리카노 [스페셜티 원두] + 순한맛", "(ICE) 아메리카노 [스페셜티 원두] + 매운맛", "(ICE) 카페라떼 [스페셜 티 원두] + 순한맛", "(HOT) 아메리카노 [스페셜티 원두] + 순한맛"]], ["빠네 크림 파스타", ["(ICE) 아메리카노 [스페셜티 원두]", "(ICE) 카페라떼 [스페셜 티 원두]", "(HOT) 아메리카노 [스페셜티 원두]", "(HOT) 카페라떼 [스페셜 티 원두]"]], ["해물 스파이시 필라프", ["중", "약", "강", "(ICE) 아메리카노 [스페셜티 원두] + 중", "(ICE) 아메리카노 [스페셜티 원두] + 약", "(ICE) 카페라떼 [스페셜 티 원두] + 약"]], ["목살 필라프", ["(ICE) 아메리카노 [스페셜티 원두]", "(ICE) 카페라떼 [스페셜 티 원두]", "(HOT) 아메리카노 [스페셜티 원두]"]], ["봉골레 파스타", ["중", "약", "강", "불고기 토핑 추가 + 중", "강 + 불고기 토핑 추가", "불고기 토핑 추가 + 약"]], ["(리뷰)마늘빵", []], ["까르보나라", ["(ICE) 아메리카노 [스페셜티 원두]", "갈릭스틱", "(ICE) 카페라떼 [스페셜 티 원두]", "(HOT) 아메리카노 [스페셜티 원두]", "(HOT) 카페라떼 [스페셜 티 원두]"]], ["불고기 필라프", ["순한맛", "매운맛", "(ICE) 아메리카노 [스페셜티 원두] + 순한맛", "(ICE) 카페라떼 [스페셜 티 원두] + 순한맛", "(ICE) 아메리카노 [스페셜티 원두] + 매운맛", "(HOT) 아메리카노 [스페셜티 원두] + 매운맛"]], ["포크 스테이크", ["순한맛", "매운맛", "(ICE) 아메리카노 [스페셜티 원두] + 순한맛", "(ICE) 아메리카노 [스페셜티 원두] + 매운맛", "(ICE) 카페라떼 [스페셜 티 원두] + 순한맛", "(HOT) 아메리카노 [스페셜티 원두] + 순한맛"]], ["봉골레 크림 파스타", ["중", "약", "불고기 토핑 추가 + 중", "강", "불고기 토핑 추가 + 약", "(ICE) 아메리카노 [스페셜티 원두] + 중"]], ["빠네 로제 파스타", ["(ICE) 아메리카노 [스페셜티 원두]", "(HOT) 아메리카노 [스페셜티 원두]"]], ["오븐 토마토 파스타", ["(ICE) 아메리카노 [스페셜티 원두]", "(ICE) 카페라떼 [스페셜 티 원두]", "(HOT) 아메리카노 [스페셜티 원두]", "(HOT) 카페라떼 [스페셜 티 원두]"]], ["투움바 파스타", ["갈릭스틱", "(ICE) 아메리카노 [스페셜티 원두]", "(ICE) 아메리카노 [스페셜티 원두] + 갈릭스틱", "(ICE) 카페라떼 [스페셜 티 원두]", "(HOT) 아메리카노 [스페셜티 원두]"]], ["치킨 텐더 샐러드", ["레몬 요거트 드레싱(추천)", "머스타드 크리미 드레싱", "발사믹 드레싱"]], ["새우 베이컨 필라프", ["순한맛", "매운맛", "(ICE) 아메리카노 [스페셜티 원두] + 순한맛", "(ICE) 카페라떼 [스페셜 티 원두] + 순한맛", "(ICE) 아메리카노 [스페셜티 원두] + 매운맛"]], ["알리오 올리오 파스타", ["중", "약", "강", "갈릭스틱 + 중", "갈릭스틱 + 약", "(ICE) 아메리카노 [스페셜티 원두] + 중"]], ["모짜렐라 샐러드", ["발사믹 드레싱", "페퍼로니 드레싱(추천)", "레몬 요거트 드레싱", "머스타드 크리미 드레싱"]], ["갈릭 포크 스테이크", ["순한맛", "매운맛", "(ICE) 아메리카노 [스페셜티 원두] + 순한맛", "(ICE) 아메리카노 [스페셜티 원두] + 매운맛", "(ICE) 카페라떼 [스페셜 티 원두] + 순한맛", "(HOT) 아메리카노 [스페셜티 원두] + 순한맛"]], ["스위트 피자", ["Small", "Large", "Large + 피자치즈 추가", "Small + 피자치즈 추가"]], ["비프 찹 스테이크", ["순한맛", "매운맛", "(ICE) 아메리카노 [스페셜티 원두] + 순한맛", "(ICE) 아메리카노 [스페셜티 원두] + 매운맛", "(HOT) 아메리카노 [스페셜티 원두] + 순한맛", "(ICE) 카페라떼 [스페셜 티 원두] + 순한맛"]], ["마르게리따 피자", ["Small", "Large", "Large + 피자치즈 추가", "Small + 피자치즈 추가"]], ["핫 까르보나라", ["중", "약", "강", "(ICE) 아메리카노 [스페셜티 원두] + 중", "갈릭스틱 + 중", "(ICE) 카페라떼 [스페셜 티 원두] + 약"]], ["페퍼로니 피자", ["Small", "Large"]], ["해물 토마토 파스타", ["(ICE) 아메리카노 [스페셜티 원두]", "갈릭스틱", "(ICE) 카페라떼 [스페셜 티 원두]", "(HOT) 카페라떼 [스페셜 티 원두] + 갈릭스틱", "(HOT) 아메리카노 [스페셜티 원두]"]], ["까수엘라 파스타", ["중", "약", "강", "(ICE) 아메리카노 [스페셜티 원두] + 중", "(ICE) 아메리카노 [스페셜티 원두] + 약"]], ["까르보나라 리조또", ["(ICE) 아메리카노 [스페셜티 원두]", "(HOT) 아메리카노 [스페셜티 원두]", "(ICE) 카페라떼 [스페셜 티 원두]"]], ["씨푸드 리조또", ["중", "약", "강", "(ICE) 아메리카노 [스페셜티 원두] + 중", "(ICE) 아메리카노 [스페셜티 원두] + 약", "(HOT) 아메리카노 [스페셜티 원두] + 중"]], ["불고기 피자", ["Small", "Large", "Small + 피자치즈 추가", "Large + 피자치즈 추가"]], ["잠봉 루꼴라 피자", ["Small", "Large", "Small + 피자치즈 추가", "Large + 피자치즈 추가"]], ["더 시그니처 그리들", ["(ICE) 아메리카노 [스페셜티 원두]", "(HOT) 아메리카노 [스페셜티 원두]"]], ["해물 토마토 뚝배기 파스타", ["중", "약", "강", "(ICE) 아메리카노 [스페셜티 원두] + 약", "(ICE) 아메리카노 [스페셜티 원두] + 중", "(HOT) 아메리카노 [스페셜티 원두] + 중"]], ["치킨 필라프", ["순한맛", "매운맛", "(ICE) 아메리카노 [스페셜티 원두] + 순한맛", "(ICE) 아메리카노 [스페셜티 원두] + 매운맛"]], ["수제 함박 스테이크", ["(ICE) 아메리카노 [스페셜티 원두]", "(HOT) 아메리카노 [스페셜티 원두]", "(ICE) 카페라떼 [스페셜 티 원두]"]], ["블랙 스톤 스테이크", ["(ICE) 아메리카노 [스페셜티 원두]", "(ICE) 카페라떼 [스페셜 티 원두]", "(HOT) 카페라떼 [스페셜 티 원두]"]], ["[리뷰이벤트] 리뷰이벤트증정", []], ["스테이크 로제 파스타", ["갈릭스틱", "(ICE) 아메리카노 [스페셜티 원두]"]], ["감바스 오일 파스타", ["중", "약", "강", "(ICE) 아메리카노 [스페셜티 원두] + 약", "(ICE) 아메리카노 [스페셜티 원두] + 중", "(HOT) 아메리카노 [스페셜티 원두] + 중"]], ["불고기 샐러드 파스타", []], ["베이컨 새우 로제 파스타", ["갈릭스틱", "(ICE) 아메리카노 [스페셜티 원두]", "(ICE) 카페라떼 [스페셜 티 원두]"]], ["아라비아따 파스타", ["중", "강", "약", "(ICE) 아메리카노 [스페셜티 원두] + 중", "(HOT) 아메리카노 [스페셜티 원두] + 약", "(ICE) 카페라떼 [스페셜 티 원두] + 중"]], ["벨지안 포테이토", []], ["바질 페스토 리조또", ["(ICE) 아메리카노 [스페셜티 원두]", "(HOT) 아메리카노 [스페셜티 원두]", "(ICE) 카페라떼 [스페셜 티 원두]"]], ["[리뷰이벤트] 아메리카노", ["ICE", "HOT"]], ["베이컨 토마토 파스타", ["(ICE) 아메리카노 [스페셜티 원두]"]], ["감바스 크림 파스타", ["갈릭스틱", "(ICE) 아메리카노 [스페셜티 원두]", "(ICE) 아메리카노 [스페셜티 원두] + 갈릭스틱"]], ["삼겹살 스테이크", ["순한맛", "매운맛", "(ICE) 아메리카노 [스페셜티 원두] + 순한맛", "(ICE) 카페라떼 [스페셜 티 원두] + 순한맛", "(HOT) 아메리카노 [스페셜티 원두] + 매운맛", "(HOT) 카페라떼 [스페셜 티 원두] + 순한맛"]], ["크림생맥주 300ml", []], ["하우스 샐러드", ["발사믹 드레싱(추천)", "레몬 요거트 드레싱", "머스타드 크리미 드레싱", "페퍼로니 드레싱"]], ["바질 크림 치즈 피자", ["Small", "Large", "Large + 피자치즈 추가"]], ["크림생맥주 500ml", []], ["프렌치 토스트", ["(ICE) 아메리카노 [스페셜티 원두]", "(ICE) 카페라떼 [스페셜 티 원두]", "(HOT) 아메리카노 [스페셜티 원두]", "(HOT) 카페라떼 [스페셜 티 원두]"]], ["아메리카노 [스페셜 티 원두]", ["ICE", "ICE + 먹고가기", "HOT", "ICE + 디카페인 변경", "HOT + 먹고가기", "ICE + 포장하기(take out)"]], ["샤인머스켓 에이드", ["먹고가기"]], ["불고기 깻잎 파스타", ["갈릭스틱", "(ICE) 아메리카노 [스페셜티 원두]", "(ICE) 아메리카노 [스페셜티 원두] + 갈릭스틱", "(ICE) 카페라떼 [스페셜 티 원두]"]], ["자몽에이드", ["먹고가기", "포장하기(take out)"]], ["레몬 에이드", ["먹고가기"]], ["허니 갈릭 치킨 퐁듀", []], ["포크 찹 스테이크", ["(ICE) 아메리카노 [스페셜티 원두]", "(HOT) 아메리카노 [스페셜티 원두]"]], ["쉬림프 오븐 토마토 파스타", ["(ICE) 아메리카노 [스페셜티 원두]", "(ICE) 카페라떼 [스페셜 티 원두]"]]], tables: ["1층-1", "1층-2", "1층-3", "1층-4", "1층-5", "1층-6", "1층-7", "1층-8", "1층-9", "1층-10", "1층-11", "1층-12", "1층-13", "1층-14", "1층-15", "1층-16", "1층-17", "1층-18", "1층-19", "1층-20", "1층-21", "1층-22", "1층-23", "1층-24", "1층-25", "1층-26", "1층-27", "1층-28", "1층-29", "1층-30", "2층-1", "2층-2", "2층-3", "2층-4", "2층-5", "2층-6", "2층-7", "2층-8", "2층-9", "2층-10", "2층-11", "2층-12", "2층-13", "2층-14", "2층-15", "2층-16", "2층-17", "2층-18", "2층-19", "2층-20", "2층-21", "2층-22", "2층-23", "2층-24", "2층-25", "2층-26", "2층-27", "2층-28", "2층-29", "2층-30", "포장1", "포장2", "포장3"], nextId: 9000, nextItem: 90000, auto: null};
 const DEMO_START = JSON.parse(JSON.stringify(DEMO.tickets));
 
 function demoFindItem(id) {
@@ -188,10 +227,65 @@ function demoRecount(t) {
   DEMO.rev += 1;
   t.rev = DEMO.rev;
 }
+function demoPick(list) { return list[Math.floor(Math.random() * list.length)]; }
+
+function demoAddTicket(table) {
+  const size = 1 + Math.floor(Math.random() * 4);
+  const items = [];
+  for (let i = 0; i < size; i++) {
+    const entry = demoPick(DEMO.pool);
+    items.push({
+      id: DEMO.nextItem++, line_no: i + 1, menu: entry[0],
+      option: entry[1].length ? demoPick(entry[1]) : "",
+      qty: Math.random() < 0.97 ? 1 : 2, served: false, served_at: null,
+    });
+  }
+  const label = table || demoPick(DEMO.tables);
+  const id = DEMO.nextId++;
+  DEMO.rev += 1;
+  DEMO.tickets.push({
+    id: id, order_no: String(id) + "-0001", table: label,
+    table_key: label.replace(/[\s-]/g, "").toLowerCase(),
+    kind: table ? "추가" : "신규", pos: "POS-01", station: "3가니",
+    received_at: Date.now() / 1000, ordered_at: Date.now() / 1000,
+    status: "open", item_count: items.length, served_count: 0,
+    rev: DEMO.rev, items: items,
+  });
+  return id;
+}
+
+// 한 장씩 시간차를 두고 들어오게 한다. 실제로는 이렇게 몰려 들어온다.
+function demoBurst(count, gapMs) {
+  let n = 0;
+  const step = () => {
+    demoAddTicket();
+    if (typeof refresh === "function") refresh();
+    if (++n < count) setTimeout(step, gapMs || 1200);
+  };
+  step();
+}
+
+function demoAuto() {
+  const btn = document.getElementById("demoAuto");
+  if (DEMO.auto) {
+    clearInterval(DEMO.auto); DEMO.auto = null;
+    btn.textContent = "자동 꺼짐";
+    btn.style.background = "#2b3446";
+  } else {
+    DEMO.auto = setInterval(() => { demoAddTicket(); refresh(); }, 6000);
+    btn.textContent = "자동 켜짐";
+    btn.style.background = "#4ade80";
+    btn.style.color = "#0d2417";
+  }
+}
+
 function demoReset() {
+  if (DEMO.auto) { clearInterval(DEMO.auto); DEMO.auto = null; }
   DEMO.tickets = JSON.parse(JSON.stringify(DEMO_START));
   DEMO.rev += 1;
-  if (typeof refresh === "function") refresh();
+  const btn = document.getElementById("demoAuto");
+  if (btn) { btn.textContent = "자동 꺼짐"; btn.style.background = "#2b3446"; btn.style.color = ""; }
+  if (typeof refresh === "function") { seenIds = null; refresh(); }
 }
 
 window.fetch = async function (url, options) {
@@ -246,15 +340,31 @@ window.addEventListener("load", function () {
   h.insertAdjacentHTML("afterend",
     '<span style="font-size:13px;font-weight:800;padding:4px 9px;border-radius:7px;' +
     'background:rgba(255,201,92,.18);color:#ffc95c">예시</span>');
-  const find = document.querySelector(".find");
-  find.insertAdjacentHTML("beforebegin",
-    '<button onclick="demoReset()" style="min-height:52px;padding:0 16px;border-radius:11px;' +
-    'background:#2b3446;font-size:15px;font-weight:700">처음으로</button>');
+  const style = "min-height:48px;padding:0 16px;border-radius:10px;background:#2b3446;" +
+                "font-size:15px;font-weight:700;white-space:nowrap;color:#f4f7fb;" +
+                "border:1px solid #3a465e";
+  document.querySelector("header").insertAdjacentHTML("afterend",
+    '<div style="display:flex;gap:8px;align-items:center;padding:8px 14px;' +
+    'background:#161b26;border-bottom:1px solid #2b3446">' +
+    '<span style="font-size:13px;color:#93a1b8;font-weight:700;margin-right:4px">' +
+    '시험용</span>' +
+    '<button onclick="demoAddTicket()" style="' + style + '">주문 1건</button>' +
+    '<button onclick="demoBurst(5)" style="' + style + '">연속 5건</button>' +
+    '<button id="demoAuto" onclick="demoAuto()" style="' + style + '">자동 꺼짐</button>' +
+    '<button onclick="demoReset()" style="' + style + '">처음으로</button>' +
+    '<span style="margin-left:auto;font-size:13px;color:#93a1b8">' +
+    '두 손가락으로 벌리면 글자가 커집니다</span></div>');
 });
 </script>
 <script>
 let state = {rev: -1, tickets: []};
 let view = localStorage.getItem("hallView") || "ticket";
+let holdNew = localStorage.getItem("hallHold") === "1";
+let seenIds = null;      // 지금까지 받아본 주문서. null 이면 첫 조회
+let shownIds = new Set();  // 화면에 올린 주문서
+let heldIds = new Set();   // 모아둔 새 주문서
+let freshIds = new Set();  // 방금 올라와 잠시 강조할 주문서
+let uiScale = parseFloat(localStorage.getItem("hallScale") || "1") || 1;
 let pending = {};          // 서버 응답 전에도 즉시 반응하도록
 let sheetTicket = null, lastDone = null, lastOk = Date.now();
 let menus = [], findResults = null;
@@ -290,6 +400,63 @@ function setView(v) {
   view = v; localStorage.setItem("hallView", v); render();
 }
 
+function setHold(on) {
+  holdNew = on;
+  localStorage.setItem("hallHold", on ? "1" : "0");
+  if (!on) showPending();   // 바로 넣기로 바꾸면 모아둔 것을 즉시 올린다
+  render();
+}
+
+function showPending() {
+  for (const id of heldIds) { shownIds.add(id); freshIds.add(id); }
+  heldIds.clear();
+  render();
+  setTimeout(() => { freshIds.clear(); render(); }, 2600);
+}
+
+// --- 화면 크기 (두 손가락으로 벌리고 오므리기) ---
+function applyScale(showHint) {
+  document.body.style.zoom = uiScale;
+  localStorage.setItem("hallScale", String(uiScale));
+  if (!showHint) return;
+  const hint = document.getElementById("zoomHint");
+  hint.textContent = Math.round(uiScale * 100) + "%";
+  hint.classList.add("show");
+  clearTimeout(applyScale.timer);
+  applyScale.timer = setTimeout(() => hint.classList.remove("show"), 800);
+}
+
+function fingerGap(touches) {
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.hypot(dx, dy);
+}
+
+let pinchGap = 0, pinchFrom = 1;
+document.addEventListener("touchstart", e => {
+  if (e.touches.length === 2) {
+    pinchGap = fingerGap(e.touches);
+    pinchFrom = uiScale;
+    cancelPress();          // 두 손가락이면 체크로 세지 않는다
+  }
+}, {passive: false});
+document.addEventListener("touchmove", e => {
+  if (e.touches.length === 2 && pinchGap) {
+    e.preventDefault();
+    const ratio = fingerGap(e.touches) / pinchGap;
+    uiScale = Math.min(2.2, Math.max(0.6, pinchFrom * ratio));
+    applyScale(true);
+  }
+}, {passive: false});
+document.addEventListener("touchend", () => { pinchGap = 0; }, {passive: true});
+
+function flashScreen() {
+  const box = document.getElementById("flash");
+  box.classList.remove("on");
+  void box.offsetWidth;      // 애니메이션을 다시 시작시키려면 필요하다
+  box.classList.add("on");
+}
+
 function itemHtml(item) {
   const on = isServed(item);
   const opt = item.option ? '<div class="opt">' + esc(item.option) + "</div>" : "";
@@ -301,7 +468,8 @@ function itemHtml(item) {
 
 function cardHtml(head, tickets) {
   const first = tickets[0];
-  const cls = first.status === "ready" ? "ready" : agoClass(first.received_at);
+  let cls = first.status === "ready" ? "ready" : agoClass(first.received_at);
+  if (tickets.some(t => freshIds.has(t.id))) cls += " fresh";
   let body = "";
   tickets.forEach((t, i) => {
     if (i > 0) {
@@ -328,11 +496,25 @@ function render() {
   document.getElementById("byTicket").className = view === "ticket" ? "on" : "";
   document.getElementById("byTable").className = view === "table" ? "on" : "";
 
+  document.getElementById("autoAdd").className = holdNew ? "" : "on";
+  document.getElementById("holdNew").className = holdNew ? "on" : "";
+
+  const banner = document.getElementById("pending");
+  if (heldIds.size) {
+    banner.textContent = "새 주문 " + heldIds.size + "건 - 누르면 올립니다";
+    banner.classList.add("show");
+  } else {
+    banner.classList.remove("show");
+  }
+
   const board = document.getElementById("board");
-  const list = state.tickets;
+  const list = state.tickets.filter(t => shownIds.has(t.id));
   if (!list.length) {
-    board.innerHTML = '<div class="empty"><b>진행 중인 주문서가 없습니다</b>' +
-      "새 주문서가 들어오면 여기에 나타납니다</div>";
+    board.innerHTML = heldIds.size
+      ? '<div class="empty"><b>새 주문 ' + heldIds.size + "건이 기다리고 있습니다</b>" +
+        "위의 노란 알림을 누르면 올라옵니다</div>"
+      : '<div class="empty"><b>진행 중인 주문서가 없습니다</b>' +
+        "새 주문서가 들어오면 여기에 나타납니다</div>";
     document.getElementById("count").textContent = "";
     return;
   }
@@ -360,6 +542,10 @@ function render() {
 
 // --- 체크 ---
 let pressTimer = null, pressedId = null;
+function cancelPress() {
+  if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+  pressedId = null;
+}
 document.getElementById("board").addEventListener("pointerdown", e => {
   const row = e.target.closest(".item");
   if (!row) return;
@@ -374,15 +560,12 @@ document.getElementById("board").addEventListener("pointerdown", e => {
 });
 document.getElementById("board").addEventListener("pointerup", e => {
   const row = e.target.closest(".item");
-  if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
-  if (!row || pressedId === null) { pressedId = null; return; }
-  if (!row.classList.contains("on")) setServed(pressedId, true);
-  pressedId = null;
+  const id = pressedId;          // 길게 눌러 해제됐으면 타이머가 이미 비워 놓는다
+  cancelPress();
+  if (!row || id === null) return;
+  if (!row.classList.contains("on")) setServed(id, true);
 });
-document.getElementById("board").addEventListener("pointercancel", () => {
-  if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
-  pressedId = null;
-});
+document.getElementById("board").addEventListener("pointercancel", cancelPress);
 
 async function setServed(itemId, served) {
   pending[itemId] = served;
@@ -506,7 +689,33 @@ async function refresh() {
     const data = await getJson("/api/hall/state");
     lastOk = Date.now();
     document.getElementById("offline").classList.remove("show");
-    if (data.rev !== state.rev) { state = data; render(); }
+    if (data.rev === state.rev) return;
+
+    const ids = new Set(data.tickets.map(t => t.id));
+    let arrived = [];
+    if (seenIds === null) {
+      // 첫 조회. 이미 있던 것은 새 주문이 아니다
+      seenIds = ids;
+      shownIds = new Set(ids);
+    } else {
+      arrived = data.tickets.filter(t => !seenIds.has(t.id));
+      for (const t of arrived) {
+        seenIds.add(t.id);
+        if (holdNew) heldIds.add(t.id);
+        else { shownIds.add(t.id); freshIds.add(t.id); }
+      }
+      // 사라진 주문서는 기억에서도 지운다
+      for (const set of [seenIds, shownIds, heldIds, freshIds]) {
+        for (const id of Array.from(set)) if (!ids.has(id)) set.delete(id);
+      }
+    }
+
+    state = data;
+    render();
+    if (arrived.length) {
+      flashScreen();
+      if (!holdNew) setTimeout(() => { freshIds.clear(); render(); }, 2600);
+    }
   } catch (e) {
     if (Date.now() - lastOk > 10000) {
       document.getElementById("offline").classList.add("show");
@@ -514,6 +723,7 @@ async function refresh() {
   }
 }
 
+applyScale(false);
 setView(view);
 refresh();
 setInterval(refresh, 1500);

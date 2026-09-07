@@ -30,12 +30,16 @@ PAGE = """<!doctype html>
     gap:14px; padding:0 14px; background:rgba(17,20,27,.97);
     border-bottom:1px solid var(--line);
   }
-  h1 { font-size:20px; margin:0; font-weight:800; letter-spacing:-.02em; white-space:nowrap; }
-  .count { font-size:15px; color:var(--muted); font-weight:700; }
+  h1 { font-size:20px; margin:0; font-weight:800; letter-spacing:-.02em; white-space:nowrap;
+       flex:0 0 auto; }
+  .count { font-size:15px; color:var(--muted); font-weight:700; white-space:nowrap;
+           overflow:hidden; text-overflow:ellipsis; }
   .spacer { flex:1; }
 
-  .toggle { display:flex; border:1px solid var(--line2); border-radius:10px; overflow:hidden; }
-  .toggle button { padding:10px 16px; font-size:15px; font-weight:700; color:var(--muted); }
+  .toggle { display:flex; border:1px solid var(--line2); border-radius:10px; overflow:hidden;
+            flex:0 0 auto; }
+  .toggle button { padding:10px 13px; font-size:15px; font-weight:700; color:var(--muted);
+                   white-space:nowrap; }
   .toggle button.on { background:var(--accent); color:var(--accent-ink); }
 
   .find {
@@ -120,6 +124,32 @@ PAGE = """<!doctype html>
   .hit .m .mine { color:var(--accent); font-weight:800; }
   .hit .m .gone { text-decoration:line-through; opacity:.45; }
 
+  /* 새 주문 알림 */
+  .flash { position:fixed; inset:0; z-index:80; pointer-events:none; opacity:0;
+           background:var(--accent); }
+  .flash.on { animation:flash .7s ease-out 2; }
+  @keyframes flash { 0%{opacity:0} 25%{opacity:.30} 100%{opacity:0} }
+
+  .card.fresh { animation:cardin 2.4s ease-out; }
+  @keyframes cardin {
+    0%   { box-shadow:0 0 0 4px var(--accent); transform:scale(1.015); }
+    100% { box-shadow:0 0 0 0 rgba(255,201,92,0); transform:scale(1); }
+  }
+
+  /* 카드를 가리지 않도록 머리말 아래 띠로 붙인다 */
+  .pending { position:sticky; top:64px; z-index:35; display:none;
+             background:var(--accent); color:var(--accent-ink);
+             padding:16px; font-size:21px; font-weight:800; text-align:center;
+             box-shadow:0 4px 14px rgba(0,0,0,.4); animation:pulse 1.8s ease-in-out infinite; }
+  .pending.show { display:block; }
+  @keyframes pulse { 0%,100%{filter:brightness(1)} 50%{filter:brightness(.88)} }
+
+  .zoom { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); z-index:85;
+          background:rgba(0,0,0,.78); color:#fff; border-radius:16px; padding:18px 28px;
+          font-size:34px; font-weight:800; opacity:0; transition:opacity .15s;
+          pointer-events:none; }
+  .zoom.show { opacity:1; }
+
   .offline { position:fixed; inset:0; z-index:90; background:rgba(10,12,17,.93); display:none;
              align-items:center; justify-content:center; text-align:center; font-size:22px;
              font-weight:800; line-height:1.8; }
@@ -135,8 +165,16 @@ PAGE = """<!doctype html>
     <button id="byTicket" onclick="setView('ticket')">주문서별</button>
     <button id="byTable" onclick="setView('table')">테이블별</button>
   </div>
+  <div class="toggle">
+    <button id="autoAdd" onclick="setHold(false)">바로 넣기</button>
+    <button id="holdNew" onclick="setHold(true)">모아두기</button>
+  </div>
   <button class="find" onclick="openFind()">메뉴<br>찾기</button>
 </header>
+
+<div class="pending" id="pending" onclick="showPending()"></div>
+<div class="flash" id="flash"></div>
+<div class="zoom" id="zoomHint"></div>
 
 <main id="board"></main>
 
@@ -166,6 +204,12 @@ PAGE = """<!doctype html>
 <script>
 let state = {rev: -1, tickets: []};
 let view = localStorage.getItem("hallView") || "ticket";
+let holdNew = localStorage.getItem("hallHold") === "1";
+let seenIds = null;      // 지금까지 받아본 주문서. null 이면 첫 조회
+let shownIds = new Set();  // 화면에 올린 주문서
+let heldIds = new Set();   // 모아둔 새 주문서
+let freshIds = new Set();  // 방금 올라와 잠시 강조할 주문서
+let uiScale = parseFloat(localStorage.getItem("hallScale") || "1") || 1;
 let pending = {};          // 서버 응답 전에도 즉시 반응하도록
 let sheetTicket = null, lastDone = null, lastOk = Date.now();
 let menus = [], findResults = null;
@@ -201,6 +245,63 @@ function setView(v) {
   view = v; localStorage.setItem("hallView", v); render();
 }
 
+function setHold(on) {
+  holdNew = on;
+  localStorage.setItem("hallHold", on ? "1" : "0");
+  if (!on) showPending();   // 바로 넣기로 바꾸면 모아둔 것을 즉시 올린다
+  render();
+}
+
+function showPending() {
+  for (const id of heldIds) { shownIds.add(id); freshIds.add(id); }
+  heldIds.clear();
+  render();
+  setTimeout(() => { freshIds.clear(); render(); }, 2600);
+}
+
+// --- 화면 크기 (두 손가락으로 벌리고 오므리기) ---
+function applyScale(showHint) {
+  document.body.style.zoom = uiScale;
+  localStorage.setItem("hallScale", String(uiScale));
+  if (!showHint) return;
+  const hint = document.getElementById("zoomHint");
+  hint.textContent = Math.round(uiScale * 100) + "%";
+  hint.classList.add("show");
+  clearTimeout(applyScale.timer);
+  applyScale.timer = setTimeout(() => hint.classList.remove("show"), 800);
+}
+
+function fingerGap(touches) {
+  const dx = touches[0].clientX - touches[1].clientX;
+  const dy = touches[0].clientY - touches[1].clientY;
+  return Math.hypot(dx, dy);
+}
+
+let pinchGap = 0, pinchFrom = 1;
+document.addEventListener("touchstart", e => {
+  if (e.touches.length === 2) {
+    pinchGap = fingerGap(e.touches);
+    pinchFrom = uiScale;
+    cancelPress();          // 두 손가락이면 체크로 세지 않는다
+  }
+}, {passive: false});
+document.addEventListener("touchmove", e => {
+  if (e.touches.length === 2 && pinchGap) {
+    e.preventDefault();
+    const ratio = fingerGap(e.touches) / pinchGap;
+    uiScale = Math.min(2.2, Math.max(0.6, pinchFrom * ratio));
+    applyScale(true);
+  }
+}, {passive: false});
+document.addEventListener("touchend", () => { pinchGap = 0; }, {passive: true});
+
+function flashScreen() {
+  const box = document.getElementById("flash");
+  box.classList.remove("on");
+  void box.offsetWidth;      // 애니메이션을 다시 시작시키려면 필요하다
+  box.classList.add("on");
+}
+
 function itemHtml(item) {
   const on = isServed(item);
   const opt = item.option ? '<div class="opt">' + esc(item.option) + "</div>" : "";
@@ -212,7 +313,8 @@ function itemHtml(item) {
 
 function cardHtml(head, tickets) {
   const first = tickets[0];
-  const cls = first.status === "ready" ? "ready" : agoClass(first.received_at);
+  let cls = first.status === "ready" ? "ready" : agoClass(first.received_at);
+  if (tickets.some(t => freshIds.has(t.id))) cls += " fresh";
   let body = "";
   tickets.forEach((t, i) => {
     if (i > 0) {
@@ -239,11 +341,25 @@ function render() {
   document.getElementById("byTicket").className = view === "ticket" ? "on" : "";
   document.getElementById("byTable").className = view === "table" ? "on" : "";
 
+  document.getElementById("autoAdd").className = holdNew ? "" : "on";
+  document.getElementById("holdNew").className = holdNew ? "on" : "";
+
+  const banner = document.getElementById("pending");
+  if (heldIds.size) {
+    banner.textContent = "새 주문 " + heldIds.size + "건 - 누르면 올립니다";
+    banner.classList.add("show");
+  } else {
+    banner.classList.remove("show");
+  }
+
   const board = document.getElementById("board");
-  const list = state.tickets;
+  const list = state.tickets.filter(t => shownIds.has(t.id));
   if (!list.length) {
-    board.innerHTML = '<div class="empty"><b>진행 중인 주문서가 없습니다</b>' +
-      "새 주문서가 들어오면 여기에 나타납니다</div>";
+    board.innerHTML = heldIds.size
+      ? '<div class="empty"><b>새 주문 ' + heldIds.size + "건이 기다리고 있습니다</b>" +
+        "위의 노란 알림을 누르면 올라옵니다</div>"
+      : '<div class="empty"><b>진행 중인 주문서가 없습니다</b>' +
+        "새 주문서가 들어오면 여기에 나타납니다</div>";
     document.getElementById("count").textContent = "";
     return;
   }
@@ -271,6 +387,10 @@ function render() {
 
 // --- 체크 ---
 let pressTimer = null, pressedId = null;
+function cancelPress() {
+  if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+  pressedId = null;
+}
 document.getElementById("board").addEventListener("pointerdown", e => {
   const row = e.target.closest(".item");
   if (!row) return;
@@ -285,15 +405,12 @@ document.getElementById("board").addEventListener("pointerdown", e => {
 });
 document.getElementById("board").addEventListener("pointerup", e => {
   const row = e.target.closest(".item");
-  if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
-  if (!row || pressedId === null) { pressedId = null; return; }
-  if (!row.classList.contains("on")) setServed(pressedId, true);
-  pressedId = null;
+  const id = pressedId;          // 길게 눌러 해제됐으면 타이머가 이미 비워 놓는다
+  cancelPress();
+  if (!row || id === null) return;
+  if (!row.classList.contains("on")) setServed(id, true);
 });
-document.getElementById("board").addEventListener("pointercancel", () => {
-  if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
-  pressedId = null;
-});
+document.getElementById("board").addEventListener("pointercancel", cancelPress);
 
 async function setServed(itemId, served) {
   pending[itemId] = served;
@@ -417,7 +534,33 @@ async function refresh() {
     const data = await getJson("/api/hall/state");
     lastOk = Date.now();
     document.getElementById("offline").classList.remove("show");
-    if (data.rev !== state.rev) { state = data; render(); }
+    if (data.rev === state.rev) return;
+
+    const ids = new Set(data.tickets.map(t => t.id));
+    let arrived = [];
+    if (seenIds === null) {
+      // 첫 조회. 이미 있던 것은 새 주문이 아니다
+      seenIds = ids;
+      shownIds = new Set(ids);
+    } else {
+      arrived = data.tickets.filter(t => !seenIds.has(t.id));
+      for (const t of arrived) {
+        seenIds.add(t.id);
+        if (holdNew) heldIds.add(t.id);
+        else { shownIds.add(t.id); freshIds.add(t.id); }
+      }
+      // 사라진 주문서는 기억에서도 지운다
+      for (const set of [seenIds, shownIds, heldIds, freshIds]) {
+        for (const id of Array.from(set)) if (!ids.has(id)) set.delete(id);
+      }
+    }
+
+    state = data;
+    render();
+    if (arrived.length) {
+      flashScreen();
+      if (!holdNew) setTimeout(() => { freshIds.clear(); render(); }, 2600);
+    }
   } catch (e) {
     if (Date.now() - lastOk > 10000) {
       document.getElementById("offline").classList.add("show");
@@ -425,6 +568,7 @@ async function refresh() {
   }
 }
 
+applyScale(false);
 setView(view);
 refresh();
 setInterval(refresh, 1500);
