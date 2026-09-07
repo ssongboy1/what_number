@@ -47,6 +47,10 @@ PAGE = """<!doctype html>
     color:var(--accent-ink); font-size:14px; font-weight:800;
     box-shadow:0 2px 8px rgba(0,0,0,.35); flex:0 0 auto; white-space:nowrap;
   }
+  .gear {
+    height:38px; padding:0 14px; border-radius:19px; border:1px solid var(--line2);
+    font-size:14px; font-weight:700; color:var(--muted); flex:0 0 auto; white-space:nowrap;
+  }
 
   main { padding:12px; display:grid; gap:12px; touch-action:pan-y;
          grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); }
@@ -176,11 +180,27 @@ PAGE = """<!doctype html>
   .pending.show { display:block; }
   @keyframes pulse { 0%,100%{filter:brightness(1)} 50%{filter:brightness(.88)} }
 
-  .zoom { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); z-index:85;
-          background:rgba(0,0,0,.78); color:#fff; border-radius:16px; padding:18px 28px;
-          font-size:34px; font-weight:800; opacity:0; transition:opacity .15s;
-          pointer-events:none; }
-  .zoom.show { opacity:1; }
+  /* 설정 */
+  .setbox { position:fixed; inset:0; z-index:70; background:rgba(8,10,14,.86); display:none;
+            align-items:center; justify-content:center; padding:24px; }
+  .setbox.show { display:flex; }
+  .setcard { background:var(--card); border:1px solid var(--line2); border-radius:18px;
+             padding:24px 26px; max-width:560px; width:100%; }
+  .setcard h2 { margin:0 0 22px; font-size:26px; font-weight:800; }
+  .setlab { font-size:15px; color:var(--muted); font-weight:800; margin:0 0 10px; }
+  .sizerow { display:flex; align-items:center; gap:14px; margin-bottom:14px; }
+  .sizebtn { width:78px; height:70px; border-radius:14px; background:var(--line);
+             font-size:34px; font-weight:800; }
+  .sizenow { flex:1; text-align:center; font-size:34px; font-weight:800; }
+  .presets { display:flex; gap:8px; margin-bottom:26px; }
+  .presets button { flex:1; min-height:52px; border-radius:11px; background:var(--line);
+                    font-size:15px; font-weight:700; }
+  .setrow { display:flex; gap:8px; margin-bottom:26px; }
+  .setrow button { flex:1; min-height:56px; border-radius:11px; background:var(--line);
+                   font-size:16px; font-weight:700; color:var(--muted); }
+  .setrow button.on { background:var(--accent); color:var(--accent-ink); }
+  .setcard .close { width:100%; min-height:62px; border-radius:12px; background:var(--accent);
+                    color:var(--accent-ink); font-size:19px; font-weight:800; }
 
   .offline { position:fixed; inset:0; z-index:90; background:rgba(10,12,17,.93); display:none;
              align-items:center; justify-content:center; text-align:center; font-size:22px;
@@ -202,11 +222,37 @@ PAGE = """<!doctype html>
     <button id="holdNew" onclick="setHold(true)">모아두기</button>
   </div>
   <button class="find" onclick="openFind()">메뉴 찾기</button>
+  <button class="gear" onclick="openSettings()">설정</button>
 </header>
 
 <div class="pending" id="pending" onclick="showPending()"></div>
 <div class="flash" id="flash"></div>
-<div class="zoom" id="zoomHint"></div>
+<div class="setbox" id="setbox" onclick="closeSettings(event)">
+  <div class="setcard" onclick="event.stopPropagation()">
+    <h2>설정</h2>
+
+    <p class="setlab">화면 크기</p>
+    <div class="sizerow">
+      <button class="sizebtn" onclick="stepScale(-0.1)">-</button>
+      <span class="sizenow" id="scaleNow">100%</span>
+      <button class="sizebtn" onclick="stepScale(0.1)">+</button>
+    </div>
+    <div class="presets">
+      <button onclick="setScale(0.8)">작게</button>
+      <button onclick="setScale(1)">보통</button>
+      <button onclick="setScale(1.3)">크게</button>
+      <button onclick="setScale(1.7)">아주 크게</button>
+    </div>
+
+    <p class="setlab">새 주문이 들어올 때 화면 깜빡임</p>
+    <div class="setrow">
+      <button id="flashOn" onclick="setFlash(true)">켜기</button>
+      <button id="flashOff" onclick="setFlash(false)">끄기</button>
+    </div>
+
+    <button class="close" onclick="closeSettings()">닫기</button>
+  </div>
+</div>
 
 <main id="board"></main>
 
@@ -246,6 +292,7 @@ let shownIds = new Set();  // 화면에 올린 주문서
 let heldIds = new Set();   // 모아둔 새 주문서
 let freshIds = new Set();  // 방금 올라와 잠시 강조할 주문서
 let uiScale = parseFloat(localStorage.getItem("hallScale") || "1") || 1;
+let flashEnabled = localStorage.getItem("hallFlash") !== "0";
 let pending = {};          // 서버 응답 전에도 즉시 반응하도록
 let sheetTicket = null, lastDone = null, lastOk = Date.now();
 let menus = [], findResults = null;
@@ -348,57 +395,46 @@ function showPending() {
   setTimeout(() => { freshIds.clear(); render(); }, 2600);
 }
 
-// --- 화면 크기 (두 손가락으로 벌리고 오므리기) ---
-function applyScale(showHint) {
+// --- 화면 크기 (설정에서 고른다) ---
+function applyScale() {
   // 주문서 영역만 키운다. 상단바는 늘 같은 크기여야 조작이 흔들리지 않는다.
   document.getElementById("board").style.zoom = uiScale;
   localStorage.setItem("hallScale", String(uiScale));
-  if (!showHint) return;
-  const hint = document.getElementById("zoomHint");
-  hint.textContent = Math.round(uiScale * 100) + "%";
-  hint.classList.add("show");
-  clearTimeout(applyScale.timer);
-  applyScale.timer = setTimeout(() => hint.classList.remove("show"), 800);
+  const label = document.getElementById("scaleNow");
+  if (label) label.textContent = Math.round(uiScale * 100) + "%";
 }
 
-function fingerGap(touches) {
-  const dx = touches[0].clientX - touches[1].clientX;
-  const dy = touches[0].clientY - touches[1].clientY;
-  return Math.hypot(dx, dy);
+function stepScale(delta) {
+  uiScale = Math.min(2.2, Math.max(0.6, Math.round((uiScale + delta) * 20) / 20));
+  applyScale();
 }
 
-let pinchGap = 0, pinchFrom = 1, pinchWaiting = false;
+function setScale(value) {
+  uiScale = value;
+  applyScale();
+}
 
-document.addEventListener("touchstart", e => {
-  // 손가락이 둘이 된 순간에만 기준을 잡는다. 도중에 다시 잡으면 화면이 튄다.
-  if (e.touches.length === 2 && !pinchGap) {
-    pinchGap = fingerGap(e.touches);
-    pinchFrom = uiScale;
-    cancelPress();
-    cancelSwipe();
-  }
-}, {passive: false});
+function openSettings() {
+  document.getElementById("setbox").classList.add("show");
+  applyScale();
+  document.getElementById("flashOn").className = flashEnabled ? "on" : "";
+  document.getElementById("flashOff").className = flashEnabled ? "" : "on";
+}
 
-document.addEventListener("touchmove", e => {
-  if (e.touches.length !== 2 || !pinchGap) return;
-  e.preventDefault();                       // 브라우저 확대가 끼어들지 못하게
-  const gap = fingerGap(e.touches);
-  if (Math.abs(gap - pinchGap) < 12) return;  // 손 떨림은 무시
-  const wanted = pinchFrom * (gap / pinchGap);
-  // 0.05 단위로 끊어야 화면을 다시 그리는 횟수가 줄어 매끄럽다
-  const stepped = Math.min(2.2, Math.max(0.6, Math.round(wanted * 20) / 20));
-  if (stepped === uiScale || pinchWaiting) return;
-  uiScale = stepped;
-  pinchWaiting = true;
-  requestAnimationFrame(() => { pinchWaiting = false; applyScale(true); });
-}, {passive: false});
+function closeSettings(event) {
+  if (event && event.target.id !== "setbox") return;
+  document.getElementById("setbox").classList.remove("show");
+}
 
-document.addEventListener("touchend", e => {
-  if (e.touches.length < 2) pinchGap = 0;
-}, {passive: true});
-document.addEventListener("touchcancel", () => { pinchGap = 0; }, {passive: true});
+function setFlash(on) {
+  flashEnabled = on;
+  localStorage.setItem("hallFlash", on ? "1" : "0");
+  document.getElementById("flashOn").className = on ? "on" : "";
+  document.getElementById("flashOff").className = on ? "" : "on";
+}
 
 function flashScreen() {
+  if (!flashEnabled) return;
   const box = document.getElementById("flash");
   box.classList.remove("on");
   void box.offsetWidth;      // 애니메이션을 다시 시작시키려면 필요하다
@@ -748,7 +784,7 @@ async function refresh() {
   }
 }
 
-applyScale(false);
+applyScale();
 setView(view);
 getJson("/api/hall/garnish")
   .then(data => { garnish = data.garnish || {}; render(); })
