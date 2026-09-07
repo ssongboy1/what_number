@@ -22,9 +22,9 @@ from what_number.hall_web import chosung, garnish_table  # noqa: E402
 from what_number.sample_tickets import random_items, random_table  # noqa: E402
 
 OUTPUT = ROOT / "홀주문서_예시.html"
-# 처음 화면은 주문서 3장으로 시작한다. 경과 시간 색이 어떻게 달라지는지
-# 한눈에 보이도록 기본(10분 미만)/노랑(10~20분)/빨강(20분 초과)을 하나씩 둔다.
-START_MINUTES = (4, 14, 27)
+# 처음 화면은 주문서 3장으로 시작한다.
+# 색이 바뀌는 지점(빨강 20분 초과 / 노랑 10분 초과 / 그 아래 기본)에 하나씩 둔다.
+START_MINUTES = (21, 11, 1)
 
 
 def make_tickets() -> list:
@@ -61,6 +61,7 @@ def make_tickets() -> list:
             "station": "3가니",
             "received_at": received,
             "ordered_at": received,
+            "age_min": minutes,
             "status": "open",
             "item_count": len(rows),
             "served_count": 0,
@@ -162,8 +163,9 @@ function demoAuto() {
   const btn = document.getElementById("demoAuto");
   if (DEMO.auto) {
     clearInterval(DEMO.auto); DEMO.auto = null;
-    btn.textContent = "자동 꺼짐";
+    btn.textContent = "자동";
     btn.style.background = "#2b3446";
+    btn.style.color = "#f4f7fb";
   } else {
     DEMO.auto = setInterval(() => { demoAddTicket(); refresh(); }, 6000);
     btn.textContent = "자동 켜짐";
@@ -175,9 +177,17 @@ function demoAuto() {
 function demoReset() {
   if (DEMO.auto) { clearInterval(DEMO.auto); DEMO.auto = null; }
   DEMO.tickets = JSON.parse(JSON.stringify(DEMO_START));
+  // 시각도 처음 상태로 되돌린다. 안 그러면 계속 오래된 주문서로 남는다.
+  const now = Date.now() / 1000;
+  for (const t of DEMO.tickets) {
+    if (typeof t.age_min === "number") {
+      t.received_at = now - t.age_min * 60;
+      t.ordered_at = t.received_at;
+    }
+  }
   DEMO.rev += 1;
   const btn = document.getElementById("demoAuto");
-  if (btn) { btn.textContent = "자동 꺼짐"; btn.style.background = "#2b3446"; btn.style.color = ""; }
+  if (btn) { btn.textContent = "자동"; btn.style.background = "#2b3446"; btn.style.color = "#f4f7fb"; }
   if (typeof refresh === "function") { seenIds = null; refresh(); }
 }
 
@@ -237,20 +247,17 @@ window.addEventListener("load", function () {
   h.insertAdjacentHTML("afterend",
     '<span style="font-size:13px;font-weight:800;padding:4px 9px;border-radius:7px;' +
     'background:rgba(255,201,92,.18);color:#ffc95c">예시</span>');
-  const style = "min-height:48px;padding:0 16px;border-radius:10px;background:#2b3446;" +
-                "font-size:15px;font-weight:700;white-space:nowrap;color:#f4f7fb;" +
+  // 시험용 단추는 남은 메뉴 표시와 보기 토글 사이에 둔다
+  const style = "height:34px;padding:0 11px;border-radius:9px;background:#2b3446;" +
+                "font-size:13px;font-weight:700;white-space:nowrap;color:#f4f7fb;" +
                 "border:1px solid #3a465e";
-  document.querySelector("header").insertAdjacentHTML("afterend",
-    '<div style="display:flex;gap:8px;align-items:center;padding:8px 14px;' +
-    'background:#161b26;border-bottom:1px solid #2b3446">' +
-    '<span style="font-size:13px;color:#93a1b8;font-weight:700;margin-right:4px">' +
-    '시험용</span>' +
+  document.querySelector("header .spacer").insertAdjacentHTML("afterend",
+    '<span style="font-size:11px;color:#93a1b8;font-weight:700">시험용</span>' +
     '<button onclick="demoAddTicket()" style="' + style + '">주문 1건</button>' +
     '<button onclick="demoBurst(5)" style="' + style + '">연속 5건</button>' +
-    '<button id="demoAuto" onclick="demoAuto()" style="' + style + '">자동 꺼짐</button>' +
+    '<button id="demoAuto" onclick="demoAuto()" style="' + style + '">자동</button>' +
     '<button onclick="demoReset()" style="' + style + '">처음으로</button>' +
-    '<span style="margin-left:auto;font-size:13px;color:#93a1b8">' +
-    '두 손가락으로 벌리면 글자가 커집니다</span></div>');
+    '<span style="flex:1"></span>');
 });
 </script>
 """

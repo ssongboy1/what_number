@@ -14,35 +14,35 @@
   html, body {
     margin:0; height:100%; background:var(--bg); color:var(--text);
     font-family:"Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;
-    touch-action:manipulation; user-select:none; -webkit-user-select:none;
+    touch-action:pan-y; user-select:none; -webkit-user-select:none;
     overscroll-behavior:contain;
   }
   button { font:inherit; color:inherit; background:none; border:none; cursor:pointer; }
 
   header {
-    position:sticky; top:0; z-index:20; height:64px; display:flex; align-items:center;
-    gap:14px; padding:0 14px; background:rgba(17,20,27,.97);
+    position:sticky; top:0; z-index:20; height:48px; display:flex; align-items:center;
+    gap:8px; padding:0 10px; background:rgba(17,20,27,.97);
     border-bottom:1px solid var(--line);
   }
-  h1 { font-size:20px; margin:0; font-weight:800; letter-spacing:-.02em; white-space:nowrap;
+  h1 { font-size:16px; margin:0; font-weight:800; letter-spacing:-.02em; white-space:nowrap;
        flex:0 0 auto; }
-  .count { font-size:15px; color:var(--muted); font-weight:700; white-space:nowrap;
-           overflow:hidden; text-overflow:ellipsis; }
+  .count { font-size:13px; color:var(--muted); font-weight:700; white-space:nowrap;
+           overflow:hidden; text-overflow:ellipsis; flex:0 1 auto; }
   .spacer { flex:1; }
 
   .toggle { display:flex; border:1px solid var(--line2); border-radius:10px; overflow:hidden;
             flex:0 0 auto; }
-  .toggle button { padding:10px 13px; font-size:15px; font-weight:700; color:var(--muted);
+  .toggle button { padding:7px 11px; font-size:13.5px; font-weight:700; color:var(--muted);
                    white-space:nowrap; }
   .toggle button.on { background:var(--accent); color:var(--accent-ink); }
 
   .find {
-    width:72px; height:72px; border-radius:50%; background:var(--accent);
-    color:var(--accent-ink); font-size:15px; font-weight:800; line-height:1.2;
-    box-shadow:0 3px 10px rgba(0,0,0,.4); flex:0 0 auto;
+    height:38px; padding:0 16px; border-radius:19px; background:var(--accent);
+    color:var(--accent-ink); font-size:14px; font-weight:800;
+    box-shadow:0 2px 8px rgba(0,0,0,.35); flex:0 0 auto; white-space:nowrap;
   }
 
-  main { padding:12px; display:grid; gap:12px;
+  main { padding:12px; display:grid; gap:12px; touch-action:pan-y;
          grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); }
 
   .card { background:var(--card); border:1px solid var(--line); border-left:5px solid var(--line);
@@ -65,9 +65,17 @@
   .clear { width:100%; min-height:56px; background:var(--done); color:#0d2417;
            font-size:18px; font-weight:800; border-top:1px solid var(--line); }
 
-  .item { display:flex; align-items:center; gap:12px; min-height:64px;
-          padding:8px 14px; border-top:1px solid var(--line); }
+  .item { position:relative; overflow:hidden; border-top:1px solid var(--line); }
   .item:first-of-type { border-top:none; }
+  .itembody { display:flex; align-items:center; gap:12px; min-height:64px;
+              padding:8px 14px; background:var(--card); position:relative; z-index:1;
+              transition:transform .18s ease-out; }
+  .item.sliding .itembody { transition:none; }
+  /* 가니쉬가 있는 줄은 왼쪽에 작은 표시를 둬서 밀 수 있다는 걸 알린다 */
+  .itembody.hasgar { box-shadow:inset 3px 0 0 rgba(255,201,92,.55); }
+  .garhint { position:absolute; inset:0; display:flex; align-items:center;
+             justify-content:space-between; padding:0 22px; font-size:16px; font-weight:800;
+             color:var(--accent-ink); background:var(--accent); }
   .box { width:28px; height:28px; flex:0 0 auto; border:2.5px solid var(--line2);
          border-radius:7px; position:relative; }
   .item.on .box { background:var(--done); border-color:var(--done); }
@@ -80,11 +88,6 @@
          background:rgba(255,201,92,.14); padding:3px 9px; border-radius:7px; }
 
   /* 가니쉬 */
-  .gar { flex:0 0 auto; min-width:52px; min-height:44px; display:flex; align-items:center;
-         justify-content:center; border:1px solid var(--line2); border-radius:9px;
-         font-size:13px; font-weight:800; color:var(--muted); margin-left:6px; }
-  .item.on .gar { opacity:.35; }
-
   .garbox { position:fixed; inset:0; z-index:60; background:rgba(8,10,14,.86); display:none;
             align-items:center; justify-content:center; padding:24px; }
   .garbox.show { display:flex; }
@@ -160,7 +163,7 @@
   }
 
   /* 카드를 가리지 않도록 머리말 아래 띠로 붙인다 */
-  .pending { position:sticky; top:64px; z-index:35; display:none;
+  .pending { position:sticky; top:48px; z-index:35; display:none;
              background:var(--accent); color:var(--accent-ink);
              padding:16px; font-size:21px; font-weight:800; text-align:center;
              box-shadow:0 4px 14px rgba(0,0,0,.4); animation:pulse 1.8s ease-in-out infinite; }
@@ -192,7 +195,7 @@
     <button id="autoAdd" onclick="setHold(false)">바로 넣기</button>
     <button id="holdNew" onclick="setHold(true)">모아두기</button>
   </div>
-  <button class="find" onclick="openFind()">메뉴<br>찾기</button>
+  <button class="find" onclick="openFind()">메뉴 찾기</button>
 </header>
 
 <div class="pending" id="pending" onclick="showPending()"></div>
@@ -241,7 +244,7 @@ catch (e) {
   }});
 }
 
-const DEMO = {tickets: [{"id": 1, "order_no": "0001-0001", "table": "2층-9", "table_key": "2층9", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788768089.0607815, "ordered_at": 1788768089.0607815, "status": "open", "item_count": 5, "served_count": 0, "rev": 1, "items": [{"id": 1, "line_no": 1, "menu": "봉골레 파스타", "option": "약", "qty": 1, "served": false, "served_at": null}, {"id": 2, "line_no": 2, "menu": "봉골레 파스타", "option": "중", "qty": 1, "served": false, "served_at": null}, {"id": 3, "line_no": 3, "menu": "모짜렐라 샐러드", "option": "발사믹 드레싱", "qty": 1, "served": false, "served_at": null}, {"id": 4, "line_no": 4, "menu": "고르곤졸라 피자", "option": "Small", "qty": 1, "served": false, "served_at": null}, {"id": 5, "line_no": 5, "menu": "크림생맥주 300ml", "option": "", "qty": 1, "served": false, "served_at": null}]}, {"id": 2, "order_no": "0002-0001", "table": "1층-7", "table_key": "1층7", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788768869.0607815, "ordered_at": 1788768869.0607815, "status": "open", "item_count": 4, "served_count": 0, "rev": 2, "items": [{"id": 6, "line_no": 1, "menu": "오븐 토마토 파스타", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 7, "line_no": 2, "menu": "(리뷰)마늘빵", "option": "", "qty": 2, "served": false, "served_at": null}, {"id": 8, "line_no": 3, "menu": "해물 스파이시 필라프", "option": "중", "qty": 1, "served": false, "served_at": null}, {"id": 9, "line_no": 4, "menu": "더 시그니처 그리들", "option": "", "qty": 1, "served": false, "served_at": null}]}, {"id": 3, "order_no": "0003-0001", "table": "2층-28", "table_key": "2층28", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788769469.0607815, "ordered_at": 1788769469.0607815, "status": "open", "item_count": 3, "served_count": 0, "rev": 3, "items": [{"id": 10, "line_no": 1, "menu": "갈릭 포크 스테이크", "option": "순한맛", "qty": 1, "served": false, "served_at": null}, {"id": 11, "line_no": 2, "menu": "해물 스파이시 필라프", "option": "약", "qty": 1, "served": false, "served_at": null}, {"id": 12, "line_no": 3, "menu": "불고기 피자", "option": "Small", "qty": 1, "served": false, "served_at": null}]}], menus: [{"menu": "봉골레 파스타", "count": 2, "cho": "ㅂㄱㄹ ㅍㅅㅌ"}, {"menu": "해물 스파이시 필라프", "count": 2, "cho": "ㅎㅁ ㅅㅍㅇㅅ ㅍㄹㅍ"}, {"menu": "(리뷰)마늘빵", "count": 1, "cho": "(ㄹㅂ)ㅁㄴㅃ"}, {"menu": "갈릭 포크 스테이크", "count": 1, "cho": "ㄱㄹ ㅍㅋ ㅅㅌㅇㅋ"}, {"menu": "고르곤졸라 피자", "count": 1, "cho": "ㄱㄹㄱㅈㄹ ㅍㅈ"}, {"menu": "더 시그니처 그리들", "count": 1, "cho": "ㄷ ㅅㄱㄴㅊ ㄱㄹㄷ"}, {"menu": "모짜렐라 샐러드", "count": 1, "cho": "ㅁㅉㄹㄹ ㅅㄹㄷ"}, {"menu": "불고기 피자", "count": 1, "cho": "ㅂㄱㄱ ㅍㅈ"}, {"menu": "오븐 토마토 파스타", "count": 1, "cho": "ㅇㅂ ㅌㅁㅌ ㅍㅅㅌ"}, {"menu": "크림생맥주 300ml", "count": 1, "cho": "ㅋㄹㅅㅁㅈ 300ml"}], garnish: {"1988피자": {"menu": "1988 피자", "sprinkle": ["바베큐소스", "파슬리"], "separate": [], "tools": "서버", "section": "PIZZA"}, "갈릭로스트치킨스테이크": {"menu": "갈릭 로스트 치킨 스테이크", "sprinkle": ["파슬리", "어린잎"], "separate": ["콘샐러드"], "tools": "나이프", "section": "STEAK&CUTLET"}, "갈릭씨푸드필라프": {"menu": "갈릭 씨푸드 필라프", "sprinkle": ["날치알", "파슬리", "어린잎"], "separate": [], "tools": "", "section": "PILAF&RISOTTO"}, "갈릭포크스테이크": {"menu": "갈릭 포크 스테이크", "sprinkle": ["파슬리", "어린잎"], "separate": ["콘샐러드"], "tools": "나이프", "section": "STEAK&CUTLET"}, "감바스오일파스타": {"menu": "감바스 오일 파스타", "sprinkle": ["파슬리", "어린잎"], "separate": [], "tools": "", "section": "VONGOLE&OIL"}, "감바스크림파스타": {"menu": "감바스 크림 파스타", "sprinkle": ["파마산", "파슬리", "어린잎"], "separate": [], "tools": "", "section": "CREAM PASTA"}, "감자치즈볼오븐파스타": {"menu": "감자 치즈볼 오븐 파스타", "sprinkle": ["바질슬라이스"], "separate": [], "tools": "", "section": "TOMATO PASTA"}, "고르곤졸라피자": {"menu": "고르곤졸라 피자", "sprinkle": [], "separate": ["스위트너"], "tools": "서버", "section": "PIZZA"}, "까르보나라": {"menu": "까르보나라", "sprinkle": ["파마산", "파슬리", "어린잎"], "separate": [], "tools": "", "section": "CREAM PASTA"}, "까르보나라리조또": {"menu": "까르보나라 리조또", "sprinkle": ["눈꽃체다", "파슬리", "어린잎"], "separate": [], "tools": "", "section": "PILAF&RISOTTO"}, "까수엘라파스타": {"menu": "까수엘라 파스타", "sprinkle": ["루꼴라"], "separate": [], "tools": "", "section": "VONGOLE&OIL"}, "더시그니처그리들": {"menu": "더 시그니처 그리들", "sprinkle": ["버터포션"], "separate": [], "tools": "나이프", "section": "STEAK&CUTLET"}, "더블삼겹살스테이크": {"menu": "더블 삼겹살 스테이크", "sprinkle": ["파슬리", "어린잎"], "separate": [], "tools": "나이프", "section": "STEAK&CUTLET"}, "더블포크스테이크": {"menu": "더블 포크 스테이크", "sprinkle": ["파슬리", "어린잎"], "separate": ["콘샐러드"], "tools": "나이프", "section": "STEAK&CUTLET"}, "돈까스김치나베": {"menu": "돈까스 김치 나베", "sprinkle": ["눈꽃모짜", "파슬리", "어린잎"], "separate": ["밥"], "tools": "나이프", "section": "STEAK&CUTLET"}, "뒥셀크림파스타": {"menu": "뒥셀 크림 파스타", "sprinkle": ["파마산", "파슬리", "루꼴라"], "separate": [], "tools": "", "section": "CREAM PASTA"}, "레드봉골레파스타": {"menu": "레드 봉골레 파스타", "sprinkle": ["파슬리", "어린잎"], "separate": [], "tools": "", "section": "VONGOLE&OIL"}, "마늘빵": {"menu": "마늘빵", "sprinkle": ["없음"], "separate": [], "tools": "", "section": "SIDE"}, "마르게리따피자": {"menu": "마르게리따 피자", "sprinkle": ["올리브오일"], "separate": [], "tools": "서버", "section": "PIZZA"}, "모짜렐라샐러드": {"menu": "모짜렐라 샐러드", "sprinkle": ["그라나"], "separate": [], "tools": "집게", "section": "SALAD"}, "목살필라프": {"menu": "목살 필라프", "sprinkle": ["파슬리", "어린잎"], "separate": [], "tools": "", "section": "PILAF&RISOTTO"}, "밀키콘치즈피자": {"menu": "밀키 콘치즈 피자", "sprinkle": ["연유", "파슬리"], "separate": [], "tools": "서버", "section": "PIZZA"}, "바베큐폭립600g": {"menu": "바베큐 폭립 600G", "sprinkle": ["파슬리"], "separate": [], "tools": "집게, 나이프", "section": "PREMIUM SIDE"}, "바질크림치즈피자": {"menu": "바질 크림치즈 피자", "sprinkle": ["스위트너", "그라나", "파슬리"], "separate": [], "tools": "서버", "section": "PIZZA"}, "바질페스토리조또": {"menu": "바질 페스토 리조또", "sprinkle": ["그라나", "어린잎"], "separate": [], "tools": "", "section": "PILAF&RISOTTO"}, "베이컨새우로제파스타": {"menu": "베이컨 새우 로제 파스타", "sprinkle": ["파마산", "파슬리", "어린잎"], "separate": [], "tools": "", "section": "CREAM PASTA"}, "베이컨스노우볼피자": {"menu": "베이컨 스노우볼 피자", "sprinkle": ["파슬리"], "separate": [], "tools": "서버", "section": "PIZZA"}, "베이컨토마토파스타": {"menu": "베이컨 토마토 파스타", "sprinkle": ["파마산", "파슬리", "어린잎"], "separate": [], "tools": "", "section": "TOMATO PASTA"}, "벨지안포테이토": {"menu": "벨지안 포테이토", "sprinkle": ["갈릭디핑", "파슬리"], "separate": ["케첩", "허니머스타드"], "tools": "", "section": "SIDE"}, "봉골레크림파스타": {"menu": "봉골레 크림 파스타", "sprinkle": ["파마산", "파슬리", "어린잎"], "separate": [], "tools": "", "section": "VONGOLE&OIL"}, "봉골레파스타": {"menu": "봉골레 파스타", "sprinkle": ["파슬리", "어린잎"], "separate": [], "tools": "", "section": "VONGOLE&OIL"}, "부대찌개오일파스타": {"menu": "부대찌개 오일 파스타", "sprinkle": ["빈스", "눈꽃체다", "파슬리", "어린잎"], "separate": ["밥"], "tools": "", "section": "VONGOLE&OIL"}, "부채살시저샐러드": {"menu": "부채살 시저 샐러드", "sprinkle": ["그라나", "아몬드", "어린잎"], "separate": [], "tools": "집게", "section": "SALAD"}, "불고기깻잎파스타": {"menu": "불고기 깻잎 파스타", "sprinkle": ["참기름", "깨"], "separate": [], "tools": "", "section": "VONGOLE&OIL"}, "불고기피자": {"menu": "불고기 피자", "sprinkle": ["바베큐소스", "파슬리"], "separate": [], "tools": "서버", "section": "PIZZA"}, "불고기필라프": {"menu": "불고기 필라프", "sprinkle": ["파슬리", "어린잎", "바베큐소스"], "separate": [], "tools": "", "section": "PILAF&RISOTTO"}, "블랙스톤스테이크": {"menu": "블랙 스톤 스테이크", "sprinkle": ["사이드 시즈닝 3종", "안전띠"], "separate": [], "tools": "나이프", "section": "STEAK&CUTLET"}, "비프찹스테이크": {"menu": "비프 찹 스테이크", "sprinkle": ["루꼴라"], "separate": ["콘샐러드"], "tools": "", "section": "STEAK&CUTLET"}, "빠네크림파스타": {"menu": "빠네 크림 파스타", "sprinkle": ["파마산", "날치알", "파슬리", "어린잎"], "separate": [], "tools": "나이프", "section": "CREAM PASTA"}, "삼겹살스테이크": {"menu": "삼겹살 스테이크", "sprinkle": ["파슬리", "어린잎"], "separate": [], "tools": "나이프", "section": "STEAK&CUTLET"}, "새우베이컨필라프": {"menu": "새우 베이컨 필라프", "sprinkle": ["파슬리", "어린잎", "바베큐소스"], "separate": [], "tools": "", "section": "PILAF&RISOTTO"}, "수제치즈함박스테이크": {"menu": "수제 치즈 함박 스테이크", "sprinkle": ["파슬리", "어린잎"], "separate": ["콘샐러드"], "tools": "나이프", "section": "STEAK&CUTLET"}, "수제포크커틀렛": {"menu": "수제 포크 커틀렛", "sprinkle": ["파슬리", "어린잎"], "separate": ["콘샐러드"], "tools": "나이프", "section": "STEAK&CUTLET"}, "수제함박스테이크": {"menu": "수제 함박 스테이크", "sprinkle": ["파슬리", "어린잎"], "separate": ["콘샐러드"], "tools": "나이프", "section": "STEAK&CUTLET"}, "쉬림프오븐토마토파스타": {"menu": "쉬림프 오븐 토마토 파스타", "sprinkle": ["파마산", "파슬리"], "separate": [], "tools": "", "section": "TOMATO PASTA"}, "스위트피자": {"menu": "스위트 피자", "sprinkle": ["파슬리"], "separate": [], "tools": "서버", "section": "PIZZA"}, "스테이크로제파스타": {"menu": "스테이크 로제 파스타", "sprinkle": ["눈꽃모짜", "루꼴라"], "separate": [], "tools": "나이프", "section": "CREAM PASTA"}, "스테이크샐러드": {"menu": "스테이크 샐러드", "sprinkle": ["그라나", "아몬드"], "separate": [], "tools": "집게", "section": "SALAD"}, "스테이크쉐어링플래터": {"menu": "스테이크 쉐어링 플래터", "sprinkle": ["눈꽃모짜", "루꼴라"], "separate": ["케첩", "허니머스타드"], "tools": "집게, 나이프", "section": "PREMIUM SIDE"}, "스푼옥수수피자": {"menu": "스푼 옥수수 피자", "sprinkle": ["스위트너", "그라나", "버터갈릭시즈닝", "파슬리"], "separate": [], "tools": "", "section": "PIZZA"}, "스푼포테이토피자": {"menu": "스푼 포테이토 피자", "sprinkle": ["사워크림", "그라나", "버터갈릭시즈닝", "파슬리"], "separate": [], "tools": "", "section": "PIZZA"}, "시카고불고기피자": {"menu": "시카고 불고기 피자", "sprinkle": ["바베큐소스", "파슬리", "버터갈릭시즈닝"], "separate": [], "tools": "서버, 나이프", "section": "PIZZA"}, "시카고쉬림프피자": {"menu": "시카고 쉬림프 피자", "sprinkle": ["스파이시시즈닝", "파슬리", "버터갈릭시즈닝"], "separate": [], "tools": "서버, 나이프", "section": "PIZZA"}, "시카고페퍼로니피자": {"menu": "시카고 페퍼로니 피자", "sprinkle": ["파슬리", "버터갈릭시즈닝"], "separate": [], "tools": "서버, 나이프", "section": "PIZZA"}, "씨푸드리조또": {"menu": "씨푸드 리조또", "sprinkle": ["그라나", "어린잎"], "separate": [], "tools": "", "section": "PILAF&RISOTTO"}, "아라비아따파스타": {"menu": "아라비아따 파스타", "sprinkle": ["파마산", "파슬리", "어린잎"], "separate": [], "tools": "", "section": "TOMATO PASTA"}, "알리오올리오파스타": {"menu": "알리오 올리오 파스타", "sprinkle": ["파슬리", "어린잎"], "separate": [], "tools": "", "section": "VONGOLE&OIL"}, "양송이크림스프": {"menu": "양송이 크림 스프", "sprinkle": ["파슬리"], "separate": [], "tools": "", "section": "PREMIUM SIDE"}, "오븐토마토파스타": {"menu": "오븐 토마토 파스타", "sprinkle": ["파마산", "파슬리"], "separate": [], "tools": "", "section": "TOMATO PASTA"}, "잠봉샐러드": {"menu": "잠봉 샐러드", "sprinkle": ["아몬드", "그라나"], "separate": [], "tools": "집게", "section": "SALAD"}, "치즈스틱": {"menu": "치즈스틱", "sprinkle": [], "separate": ["케첩", "허니머스타드"], "tools": "", "section": "SIDE"}, "치킨스테이크필라프": {"menu": "치킨 스테이크 필라프", "sprinkle": ["쪽파", "올리브오일"], "separate": [], "tools": "", "section": "PILAF&RISOTTO"}, "치킨크림파스타": {"menu": "치킨 크림 파스타", "sprinkle": ["파마산", "파슬리", "어린잎"], "separate": [], "tools": "", "section": "CREAM PASTA"}, "치킨텐더샐러드": {"menu": "치킨 텐더 샐러드", "sprinkle": ["허니머스타드", "파슬리"], "separate": [], "tools": "집게", "section": "SALAD"}, "치킨토마토파스타": {"menu": "치킨 토마토 파스타", "sprinkle": ["파마산", "파슬리", "어린잎"], "separate": [], "tools": "", "section": "TOMATO PASTA"}, "치킨필라프": {"menu": "치킨 필라프", "sprinkle": ["파슬리", "어린잎", "바베큐소스"], "separate": [], "tools": "", "section": "PILAF&RISOTTO"}, "치킨너겟": {"menu": "치킨너겟", "sprinkle": [], "separate": ["케첩", "허니머스타드"], "tools": "", "section": "SIDE"}, "콰트로피자": {"menu": "콰트로 피자", "sprinkle": ["고르곤졸라, 바질크림치즈 : 스위트너"], "separate": [], "tools": "서버", "section": "PIZZA"}, "크림치즈볼": {"menu": "크림치즈볼", "sprinkle": ["없음"], "separate": [], "tools": "", "section": "SIDE"}, "투움바파스타": {"menu": "투움바 파스타", "sprinkle": ["파다노", "쪽파"], "separate": [], "tools": "나이프", "section": "CREAM PASTA"}, "트러플칩": {"menu": "트러플칩", "sprinkle": ["파슬리"], "separate": [], "tools": "", "section": "SIDE"}, "페퍼로니라이트크림파스타": {"menu": "페퍼로니 라이트 크림 파스타", "sprinkle": ["파마산", "파슬리", "루꼴라", "올리브오일"], "separate": [], "tools": "", "section": "CREAM PASTA"}, "페퍼로니피자": {"menu": "페퍼로니 피자", "sprinkle": ["파슬리"], "separate": [], "tools": "서버", "section": "PIZZA"}, "포크스테이크": {"menu": "포크 스테이크", "sprinkle": ["파슬리", "어린잎"], "separate": ["콘샐러드"], "tools": "나이프", "section": "STEAK&CUTLET"}, "포크찹스테이크": {"menu": "포크 찹 스테이크", "sprinkle": ["루꼴라"], "separate": ["콘샐러드"], "tools": "", "section": "STEAK&CUTLET"}, "프레시리코타샐러드": {"menu": "프레시 리코타 샐러드", "sprinkle": ["아몬드", "파슬리"], "separate": [], "tools": "집게", "section": "SALAD"}, "하우스샐러드": {"menu": "하우스 샐러드", "sprinkle": ["그라나"], "separate": [], "tools": "집게", "section": "SALAD"}, "할라피뇨어니언파스타": {"menu": "할라피뇨 어니언 파스타", "sprinkle": ["파슬리", "어린잎"], "separate": [], "tools": "", "section": "VONGOLE&OIL"}, "핫까르보나라": {"menu": "핫 까르보나라", "sprinkle": ["파마산", "파슬리", "어린잎"], "separate": [], "tools": "", "section": "CREAM PASTA"}, "해물떡볶이": {"menu": "해물 떡볶이", "sprinkle": ["깨, 파슬리", "어린잎"], "separate": [], "tools": "", "section": "PREMIUM SIDE"}, "해물스파이시필라프": {"menu": "해물 스파이시 필라프", "sprinkle": ["파슬리", "어린잎"], "separate": [], "tools": "", "section": "PILAF&RISOTTO"}, "해물토마토뚝배기파스타": {"menu": "해물 토마토 뚝배기 파스타", "sprinkle": ["파마산", "파슬리", "어린잎"], "separate": [], "tools": "", "section": "TOMATO PASTA"}, "해물토마토파스타": {"menu": "해물 토마토 파스타", "sprinkle": ["파마산", "파슬리", "어린잎"], "separate": [], "tools": "", "section": "TOMATO PASTA"}, "허니갈릭치킨퐁듀": {"menu": "허니 갈릭 치킨 퐁듀", "sprinkle": ["파슬리"], "separate": [], "tools": "", "section": "PREMIUM SIDE"}}, rev: 100,
+const DEMO = {tickets: [{"id": 1, "order_no": "0001-0001", "table": "2층-9", "table_key": "2층9", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788769151.7729998, "ordered_at": 1788769151.7729998, "age_min": 21, "status": "open", "item_count": 5, "served_count": 0, "rev": 1, "items": [{"id": 1, "line_no": 1, "menu": "봉골레 파스타", "option": "약", "qty": 1, "served": false, "served_at": null}, {"id": 2, "line_no": 2, "menu": "봉골레 파스타", "option": "중", "qty": 1, "served": false, "served_at": null}, {"id": 3, "line_no": 3, "menu": "모짜렐라 샐러드", "option": "발사믹 드레싱", "qty": 1, "served": false, "served_at": null}, {"id": 4, "line_no": 4, "menu": "고르곤졸라 피자", "option": "Small", "qty": 1, "served": false, "served_at": null}, {"id": 5, "line_no": 5, "menu": "크림생맥주 300ml", "option": "", "qty": 1, "served": false, "served_at": null}]}, {"id": 2, "order_no": "0002-0001", "table": "1층-7", "table_key": "1층7", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788769751.7729998, "ordered_at": 1788769751.7729998, "age_min": 11, "status": "open", "item_count": 4, "served_count": 0, "rev": 2, "items": [{"id": 6, "line_no": 1, "menu": "오븐 토마토 파스타", "option": "", "qty": 1, "served": false, "served_at": null}, {"id": 7, "line_no": 2, "menu": "(리뷰)마늘빵", "option": "", "qty": 2, "served": false, "served_at": null}, {"id": 8, "line_no": 3, "menu": "해물 스파이시 필라프", "option": "중", "qty": 1, "served": false, "served_at": null}, {"id": 9, "line_no": 4, "menu": "더 시그니처 그리들", "option": "", "qty": 1, "served": false, "served_at": null}]}, {"id": 3, "order_no": "0003-0001", "table": "2층-28", "table_key": "2층28", "kind": "신규", "pos": "POS-01", "station": "3가니", "received_at": 1788770351.7729998, "ordered_at": 1788770351.7729998, "age_min": 1, "status": "open", "item_count": 3, "served_count": 0, "rev": 3, "items": [{"id": 10, "line_no": 1, "menu": "갈릭 포크 스테이크", "option": "순한맛", "qty": 1, "served": false, "served_at": null}, {"id": 11, "line_no": 2, "menu": "해물 스파이시 필라프", "option": "약", "qty": 1, "served": false, "served_at": null}, {"id": 12, "line_no": 3, "menu": "불고기 피자", "option": "Small", "qty": 1, "served": false, "served_at": null}]}], menus: [{"menu": "봉골레 파스타", "count": 2, "cho": "ㅂㄱㄹ ㅍㅅㅌ"}, {"menu": "해물 스파이시 필라프", "count": 2, "cho": "ㅎㅁ ㅅㅍㅇㅅ ㅍㄹㅍ"}, {"menu": "(리뷰)마늘빵", "count": 1, "cho": "(ㄹㅂ)ㅁㄴㅃ"}, {"menu": "갈릭 포크 스테이크", "count": 1, "cho": "ㄱㄹ ㅍㅋ ㅅㅌㅇㅋ"}, {"menu": "고르곤졸라 피자", "count": 1, "cho": "ㄱㄹㄱㅈㄹ ㅍㅈ"}, {"menu": "더 시그니처 그리들", "count": 1, "cho": "ㄷ ㅅㄱㄴㅊ ㄱㄹㄷ"}, {"menu": "모짜렐라 샐러드", "count": 1, "cho": "ㅁㅉㄹㄹ ㅅㄹㄷ"}, {"menu": "불고기 피자", "count": 1, "cho": "ㅂㄱㄱ ㅍㅈ"}, {"menu": "오븐 토마토 파스타", "count": 1, "cho": "ㅇㅂ ㅌㅁㅌ ㅍㅅㅌ"}, {"menu": "크림생맥주 300ml", "count": 1, "cho": "ㅋㄹㅅㅁㅈ 300ml"}], garnish: {"1988피자": {"menu": "1988 피자", "sprinkle": ["바베큐소스", "파슬리"], "separate": [], "tools": "서버", "section": "PIZZA"}, "갈릭로스트치킨스테이크": {"menu": "갈릭 로스트 치킨 스테이크", "sprinkle": ["파슬리", "어린잎"], "separate": ["콘샐러드"], "tools": "나이프", "section": "STEAK&CUTLET"}, "갈릭씨푸드필라프": {"menu": "갈릭 씨푸드 필라프", "sprinkle": ["날치알", "파슬리", "어린잎"], "separate": [], "tools": "", "section": "PILAF&RISOTTO"}, "갈릭포크스테이크": {"menu": "갈릭 포크 스테이크", "sprinkle": ["파슬리", "어린잎"], "separate": ["콘샐러드"], "tools": "나이프", "section": "STEAK&CUTLET"}, "감바스오일파스타": {"menu": "감바스 오일 파스타", "sprinkle": ["파슬리", "어린잎"], "separate": [], "tools": "", "section": "VONGOLE&OIL"}, "감바스크림파스타": {"menu": "감바스 크림 파스타", "sprinkle": ["파마산", "파슬리", "어린잎"], "separate": [], "tools": "", "section": "CREAM PASTA"}, "감자치즈볼오븐파스타": {"menu": "감자 치즈볼 오븐 파스타", "sprinkle": ["바질슬라이스"], "separate": [], "tools": "", "section": "TOMATO PASTA"}, "고르곤졸라피자": {"menu": "고르곤졸라 피자", "sprinkle": [], "separate": ["스위트너"], "tools": "서버", "section": "PIZZA"}, "까르보나라": {"menu": "까르보나라", "sprinkle": ["파마산", "파슬리", "어린잎"], "separate": [], "tools": "", "section": "CREAM PASTA"}, "까르보나라리조또": {"menu": "까르보나라 리조또", "sprinkle": ["눈꽃체다", "파슬리", "어린잎"], "separate": [], "tools": "", "section": "PILAF&RISOTTO"}, "까수엘라파스타": {"menu": "까수엘라 파스타", "sprinkle": ["루꼴라"], "separate": [], "tools": "", "section": "VONGOLE&OIL"}, "더시그니처그리들": {"menu": "더 시그니처 그리들", "sprinkle": ["버터포션"], "separate": [], "tools": "나이프", "section": "STEAK&CUTLET"}, "더블삼겹살스테이크": {"menu": "더블 삼겹살 스테이크", "sprinkle": ["파슬리", "어린잎"], "separate": [], "tools": "나이프", "section": "STEAK&CUTLET"}, "더블포크스테이크": {"menu": "더블 포크 스테이크", "sprinkle": ["파슬리", "어린잎"], "separate": ["콘샐러드"], "tools": "나이프", "section": "STEAK&CUTLET"}, "돈까스김치나베": {"menu": "돈까스 김치 나베", "sprinkle": ["눈꽃모짜", "파슬리", "어린잎"], "separate": ["밥"], "tools": "나이프", "section": "STEAK&CUTLET"}, "뒥셀크림파스타": {"menu": "뒥셀 크림 파스타", "sprinkle": ["파마산", "파슬리", "루꼴라"], "separate": [], "tools": "", "section": "CREAM PASTA"}, "레드봉골레파스타": {"menu": "레드 봉골레 파스타", "sprinkle": ["파슬리", "어린잎"], "separate": [], "tools": "", "section": "VONGOLE&OIL"}, "마늘빵": {"menu": "마늘빵", "sprinkle": ["없음"], "separate": [], "tools": "", "section": "SIDE"}, "마르게리따피자": {"menu": "마르게리따 피자", "sprinkle": ["올리브오일"], "separate": [], "tools": "서버", "section": "PIZZA"}, "모짜렐라샐러드": {"menu": "모짜렐라 샐러드", "sprinkle": ["그라나"], "separate": [], "tools": "집게", "section": "SALAD"}, "목살필라프": {"menu": "목살 필라프", "sprinkle": ["파슬리", "어린잎"], "separate": [], "tools": "", "section": "PILAF&RISOTTO"}, "밀키콘치즈피자": {"menu": "밀키 콘치즈 피자", "sprinkle": ["연유", "파슬리"], "separate": [], "tools": "서버", "section": "PIZZA"}, "바베큐폭립600g": {"menu": "바베큐 폭립 600G", "sprinkle": ["파슬리"], "separate": [], "tools": "집게, 나이프", "section": "PREMIUM SIDE"}, "바질크림치즈피자": {"menu": "바질 크림치즈 피자", "sprinkle": ["스위트너", "그라나", "파슬리"], "separate": [], "tools": "서버", "section": "PIZZA"}, "바질페스토리조또": {"menu": "바질 페스토 리조또", "sprinkle": ["그라나", "어린잎"], "separate": [], "tools": "", "section": "PILAF&RISOTTO"}, "베이컨새우로제파스타": {"menu": "베이컨 새우 로제 파스타", "sprinkle": ["파마산", "파슬리", "어린잎"], "separate": [], "tools": "", "section": "CREAM PASTA"}, "베이컨스노우볼피자": {"menu": "베이컨 스노우볼 피자", "sprinkle": ["파슬리"], "separate": [], "tools": "서버", "section": "PIZZA"}, "베이컨토마토파스타": {"menu": "베이컨 토마토 파스타", "sprinkle": ["파마산", "파슬리", "어린잎"], "separate": [], "tools": "", "section": "TOMATO PASTA"}, "벨지안포테이토": {"menu": "벨지안 포테이토", "sprinkle": ["갈릭디핑", "파슬리"], "separate": ["케첩", "허니머스타드"], "tools": "", "section": "SIDE"}, "봉골레크림파스타": {"menu": "봉골레 크림 파스타", "sprinkle": ["파마산", "파슬리", "어린잎"], "separate": [], "tools": "", "section": "VONGOLE&OIL"}, "봉골레파스타": {"menu": "봉골레 파스타", "sprinkle": ["파슬리", "어린잎"], "separate": [], "tools": "", "section": "VONGOLE&OIL"}, "부대찌개오일파스타": {"menu": "부대찌개 오일 파스타", "sprinkle": ["빈스", "눈꽃체다", "파슬리", "어린잎"], "separate": ["밥"], "tools": "", "section": "VONGOLE&OIL"}, "부채살시저샐러드": {"menu": "부채살 시저 샐러드", "sprinkle": ["그라나", "아몬드", "어린잎"], "separate": [], "tools": "집게", "section": "SALAD"}, "불고기깻잎파스타": {"menu": "불고기 깻잎 파스타", "sprinkle": ["참기름", "깨"], "separate": [], "tools": "", "section": "VONGOLE&OIL"}, "불고기피자": {"menu": "불고기 피자", "sprinkle": ["바베큐소스", "파슬리"], "separate": [], "tools": "서버", "section": "PIZZA"}, "불고기필라프": {"menu": "불고기 필라프", "sprinkle": ["파슬리", "어린잎", "바베큐소스"], "separate": [], "tools": "", "section": "PILAF&RISOTTO"}, "블랙스톤스테이크": {"menu": "블랙 스톤 스테이크", "sprinkle": ["사이드 시즈닝 3종", "안전띠"], "separate": [], "tools": "나이프", "section": "STEAK&CUTLET"}, "비프찹스테이크": {"menu": "비프 찹 스테이크", "sprinkle": ["루꼴라"], "separate": ["콘샐러드"], "tools": "", "section": "STEAK&CUTLET"}, "빠네크림파스타": {"menu": "빠네 크림 파스타", "sprinkle": ["파마산", "날치알", "파슬리", "어린잎"], "separate": [], "tools": "나이프", "section": "CREAM PASTA"}, "삼겹살스테이크": {"menu": "삼겹살 스테이크", "sprinkle": ["파슬리", "어린잎"], "separate": [], "tools": "나이프", "section": "STEAK&CUTLET"}, "새우베이컨필라프": {"menu": "새우 베이컨 필라프", "sprinkle": ["파슬리", "어린잎", "바베큐소스"], "separate": [], "tools": "", "section": "PILAF&RISOTTO"}, "수제치즈함박스테이크": {"menu": "수제 치즈 함박 스테이크", "sprinkle": ["파슬리", "어린잎"], "separate": ["콘샐러드"], "tools": "나이프", "section": "STEAK&CUTLET"}, "수제포크커틀렛": {"menu": "수제 포크 커틀렛", "sprinkle": ["파슬리", "어린잎"], "separate": ["콘샐러드"], "tools": "나이프", "section": "STEAK&CUTLET"}, "수제함박스테이크": {"menu": "수제 함박 스테이크", "sprinkle": ["파슬리", "어린잎"], "separate": ["콘샐러드"], "tools": "나이프", "section": "STEAK&CUTLET"}, "쉬림프오븐토마토파스타": {"menu": "쉬림프 오븐 토마토 파스타", "sprinkle": ["파마산", "파슬리"], "separate": [], "tools": "", "section": "TOMATO PASTA"}, "스위트피자": {"menu": "스위트 피자", "sprinkle": ["파슬리"], "separate": [], "tools": "서버", "section": "PIZZA"}, "스테이크로제파스타": {"menu": "스테이크 로제 파스타", "sprinkle": ["눈꽃모짜", "루꼴라"], "separate": [], "tools": "나이프", "section": "CREAM PASTA"}, "스테이크샐러드": {"menu": "스테이크 샐러드", "sprinkle": ["그라나", "아몬드"], "separate": [], "tools": "집게", "section": "SALAD"}, "스테이크쉐어링플래터": {"menu": "스테이크 쉐어링 플래터", "sprinkle": ["눈꽃모짜", "루꼴라"], "separate": ["케첩", "허니머스타드"], "tools": "집게, 나이프", "section": "PREMIUM SIDE"}, "스푼옥수수피자": {"menu": "스푼 옥수수 피자", "sprinkle": ["스위트너", "그라나", "버터갈릭시즈닝", "파슬리"], "separate": [], "tools": "", "section": "PIZZA"}, "스푼포테이토피자": {"menu": "스푼 포테이토 피자", "sprinkle": ["사워크림", "그라나", "버터갈릭시즈닝", "파슬리"], "separate": [], "tools": "", "section": "PIZZA"}, "시카고불고기피자": {"menu": "시카고 불고기 피자", "sprinkle": ["바베큐소스", "파슬리", "버터갈릭시즈닝"], "separate": [], "tools": "서버, 나이프", "section": "PIZZA"}, "시카고쉬림프피자": {"menu": "시카고 쉬림프 피자", "sprinkle": ["스파이시시즈닝", "파슬리", "버터갈릭시즈닝"], "separate": [], "tools": "서버, 나이프", "section": "PIZZA"}, "시카고페퍼로니피자": {"menu": "시카고 페퍼로니 피자", "sprinkle": ["파슬리", "버터갈릭시즈닝"], "separate": [], "tools": "서버, 나이프", "section": "PIZZA"}, "씨푸드리조또": {"menu": "씨푸드 리조또", "sprinkle": ["그라나", "어린잎"], "separate": [], "tools": "", "section": "PILAF&RISOTTO"}, "아라비아따파스타": {"menu": "아라비아따 파스타", "sprinkle": ["파마산", "파슬리", "어린잎"], "separate": [], "tools": "", "section": "TOMATO PASTA"}, "알리오올리오파스타": {"menu": "알리오 올리오 파스타", "sprinkle": ["파슬리", "어린잎"], "separate": [], "tools": "", "section": "VONGOLE&OIL"}, "양송이크림스프": {"menu": "양송이 크림 스프", "sprinkle": ["파슬리"], "separate": [], "tools": "", "section": "PREMIUM SIDE"}, "오븐토마토파스타": {"menu": "오븐 토마토 파스타", "sprinkle": ["파마산", "파슬리"], "separate": [], "tools": "", "section": "TOMATO PASTA"}, "잠봉샐러드": {"menu": "잠봉 샐러드", "sprinkle": ["아몬드", "그라나"], "separate": [], "tools": "집게", "section": "SALAD"}, "치즈스틱": {"menu": "치즈스틱", "sprinkle": [], "separate": ["케첩", "허니머스타드"], "tools": "", "section": "SIDE"}, "치킨스테이크필라프": {"menu": "치킨 스테이크 필라프", "sprinkle": ["쪽파", "올리브오일"], "separate": [], "tools": "", "section": "PILAF&RISOTTO"}, "치킨크림파스타": {"menu": "치킨 크림 파스타", "sprinkle": ["파마산", "파슬리", "어린잎"], "separate": [], "tools": "", "section": "CREAM PASTA"}, "치킨텐더샐러드": {"menu": "치킨 텐더 샐러드", "sprinkle": ["허니머스타드", "파슬리"], "separate": [], "tools": "집게", "section": "SALAD"}, "치킨토마토파스타": {"menu": "치킨 토마토 파스타", "sprinkle": ["파마산", "파슬리", "어린잎"], "separate": [], "tools": "", "section": "TOMATO PASTA"}, "치킨필라프": {"menu": "치킨 필라프", "sprinkle": ["파슬리", "어린잎", "바베큐소스"], "separate": [], "tools": "", "section": "PILAF&RISOTTO"}, "치킨너겟": {"menu": "치킨너겟", "sprinkle": [], "separate": ["케첩", "허니머스타드"], "tools": "", "section": "SIDE"}, "콰트로피자": {"menu": "콰트로 피자", "sprinkle": ["고르곤졸라, 바질크림치즈 : 스위트너"], "separate": [], "tools": "서버", "section": "PIZZA"}, "크림치즈볼": {"menu": "크림치즈볼", "sprinkle": ["없음"], "separate": [], "tools": "", "section": "SIDE"}, "투움바파스타": {"menu": "투움바 파스타", "sprinkle": ["파다노", "쪽파"], "separate": [], "tools": "나이프", "section": "CREAM PASTA"}, "트러플칩": {"menu": "트러플칩", "sprinkle": ["파슬리"], "separate": [], "tools": "", "section": "SIDE"}, "페퍼로니라이트크림파스타": {"menu": "페퍼로니 라이트 크림 파스타", "sprinkle": ["파마산", "파슬리", "루꼴라", "올리브오일"], "separate": [], "tools": "", "section": "CREAM PASTA"}, "페퍼로니피자": {"menu": "페퍼로니 피자", "sprinkle": ["파슬리"], "separate": [], "tools": "서버", "section": "PIZZA"}, "포크스테이크": {"menu": "포크 스테이크", "sprinkle": ["파슬리", "어린잎"], "separate": ["콘샐러드"], "tools": "나이프", "section": "STEAK&CUTLET"}, "포크찹스테이크": {"menu": "포크 찹 스테이크", "sprinkle": ["루꼴라"], "separate": ["콘샐러드"], "tools": "", "section": "STEAK&CUTLET"}, "프레시리코타샐러드": {"menu": "프레시 리코타 샐러드", "sprinkle": ["아몬드", "파슬리"], "separate": [], "tools": "집게", "section": "SALAD"}, "하우스샐러드": {"menu": "하우스 샐러드", "sprinkle": ["그라나"], "separate": [], "tools": "집게", "section": "SALAD"}, "할라피뇨어니언파스타": {"menu": "할라피뇨 어니언 파스타", "sprinkle": ["파슬리", "어린잎"], "separate": [], "tools": "", "section": "VONGOLE&OIL"}, "핫까르보나라": {"menu": "핫 까르보나라", "sprinkle": ["파마산", "파슬리", "어린잎"], "separate": [], "tools": "", "section": "CREAM PASTA"}, "해물떡볶이": {"menu": "해물 떡볶이", "sprinkle": ["깨, 파슬리", "어린잎"], "separate": [], "tools": "", "section": "PREMIUM SIDE"}, "해물스파이시필라프": {"menu": "해물 스파이시 필라프", "sprinkle": ["파슬리", "어린잎"], "separate": [], "tools": "", "section": "PILAF&RISOTTO"}, "해물토마토뚝배기파스타": {"menu": "해물 토마토 뚝배기 파스타", "sprinkle": ["파마산", "파슬리", "어린잎"], "separate": [], "tools": "", "section": "TOMATO PASTA"}, "해물토마토파스타": {"menu": "해물 토마토 파스타", "sprinkle": ["파마산", "파슬리", "어린잎"], "separate": [], "tools": "", "section": "TOMATO PASTA"}, "허니갈릭치킨퐁듀": {"menu": "허니 갈릭 치킨 퐁듀", "sprinkle": ["파슬리"], "separate": [], "tools": "", "section": "PREMIUM SIDE"}}, rev: 100,
               pool: [["고르곤졸라 피자", ["Small", "Large", "Small + 피자치즈 추가", "Large + 피자치즈 추가"]], ["더블 포크 스테이크", ["순한맛", "매운맛", "(ICE) 아메리카노 [스페셜티 원두] + 순한맛", "(ICE) 아메리카노 [스페셜티 원두] + 매운맛", "(ICE) 카페라떼 [스페셜 티 원두] + 순한맛", "(HOT) 아메리카노 [스페셜티 원두] + 순한맛"]], ["빠네 크림 파스타", ["(ICE) 아메리카노 [스페셜티 원두]", "(ICE) 카페라떼 [스페셜 티 원두]", "(HOT) 아메리카노 [스페셜티 원두]", "(HOT) 카페라떼 [스페셜 티 원두]"]], ["해물 스파이시 필라프", ["중", "약", "강", "(ICE) 아메리카노 [스페셜티 원두] + 중", "(ICE) 아메리카노 [스페셜티 원두] + 약", "(ICE) 카페라떼 [스페셜 티 원두] + 약"]], ["목살 필라프", ["(ICE) 아메리카노 [스페셜티 원두]", "(ICE) 카페라떼 [스페셜 티 원두]", "(HOT) 아메리카노 [스페셜티 원두]"]], ["봉골레 파스타", ["중", "약", "강", "불고기 토핑 추가 + 중", "강 + 불고기 토핑 추가", "불고기 토핑 추가 + 약"]], ["(리뷰)마늘빵", []], ["까르보나라", ["(ICE) 아메리카노 [스페셜티 원두]", "갈릭스틱", "(ICE) 카페라떼 [스페셜 티 원두]", "(HOT) 아메리카노 [스페셜티 원두]", "(HOT) 카페라떼 [스페셜 티 원두]"]], ["불고기 필라프", ["순한맛", "매운맛", "(ICE) 아메리카노 [스페셜티 원두] + 순한맛", "(ICE) 카페라떼 [스페셜 티 원두] + 순한맛", "(ICE) 아메리카노 [스페셜티 원두] + 매운맛", "(HOT) 아메리카노 [스페셜티 원두] + 매운맛"]], ["포크 스테이크", ["순한맛", "매운맛", "(ICE) 아메리카노 [스페셜티 원두] + 순한맛", "(ICE) 아메리카노 [스페셜티 원두] + 매운맛", "(ICE) 카페라떼 [스페셜 티 원두] + 순한맛", "(HOT) 아메리카노 [스페셜티 원두] + 순한맛"]], ["봉골레 크림 파스타", ["중", "약", "불고기 토핑 추가 + 중", "강", "불고기 토핑 추가 + 약", "(ICE) 아메리카노 [스페셜티 원두] + 중"]], ["빠네 로제 파스타", ["(ICE) 아메리카노 [스페셜티 원두]", "(HOT) 아메리카노 [스페셜티 원두]"]], ["오븐 토마토 파스타", ["(ICE) 아메리카노 [스페셜티 원두]", "(ICE) 카페라떼 [스페셜 티 원두]", "(HOT) 아메리카노 [스페셜티 원두]", "(HOT) 카페라떼 [스페셜 티 원두]"]], ["투움바 파스타", ["갈릭스틱", "(ICE) 아메리카노 [스페셜티 원두]", "(ICE) 아메리카노 [스페셜티 원두] + 갈릭스틱", "(ICE) 카페라떼 [스페셜 티 원두]", "(HOT) 아메리카노 [스페셜티 원두]"]], ["치킨 텐더 샐러드", ["레몬 요거트 드레싱(추천)", "머스타드 크리미 드레싱", "발사믹 드레싱"]], ["새우 베이컨 필라프", ["순한맛", "매운맛", "(ICE) 아메리카노 [스페셜티 원두] + 순한맛", "(ICE) 카페라떼 [스페셜 티 원두] + 순한맛", "(ICE) 아메리카노 [스페셜티 원두] + 매운맛"]], ["알리오 올리오 파스타", ["중", "약", "강", "갈릭스틱 + 중", "갈릭스틱 + 약", "(ICE) 아메리카노 [스페셜티 원두] + 중"]], ["모짜렐라 샐러드", ["발사믹 드레싱", "페퍼로니 드레싱(추천)", "레몬 요거트 드레싱", "머스타드 크리미 드레싱"]], ["갈릭 포크 스테이크", ["순한맛", "매운맛", "(ICE) 아메리카노 [스페셜티 원두] + 순한맛", "(ICE) 아메리카노 [스페셜티 원두] + 매운맛", "(ICE) 카페라떼 [스페셜 티 원두] + 순한맛", "(HOT) 아메리카노 [스페셜티 원두] + 순한맛"]], ["스위트 피자", ["Small", "Large", "Large + 피자치즈 추가", "Small + 피자치즈 추가"]], ["비프 찹 스테이크", ["순한맛", "매운맛", "(ICE) 아메리카노 [스페셜티 원두] + 순한맛", "(ICE) 아메리카노 [스페셜티 원두] + 매운맛", "(HOT) 아메리카노 [스페셜티 원두] + 순한맛", "(ICE) 카페라떼 [스페셜 티 원두] + 순한맛"]], ["마르게리따 피자", ["Small", "Large", "Large + 피자치즈 추가", "Small + 피자치즈 추가"]], ["핫 까르보나라", ["중", "약", "강", "(ICE) 아메리카노 [스페셜티 원두] + 중", "갈릭스틱 + 중", "(ICE) 카페라떼 [스페셜 티 원두] + 약"]], ["페퍼로니 피자", ["Small", "Large"]], ["해물 토마토 파스타", ["(ICE) 아메리카노 [스페셜티 원두]", "갈릭스틱", "(ICE) 카페라떼 [스페셜 티 원두]", "(HOT) 카페라떼 [스페셜 티 원두] + 갈릭스틱", "(HOT) 아메리카노 [스페셜티 원두]"]], ["까수엘라 파스타", ["중", "약", "강", "(ICE) 아메리카노 [스페셜티 원두] + 중", "(ICE) 아메리카노 [스페셜티 원두] + 약"]], ["까르보나라 리조또", ["(ICE) 아메리카노 [스페셜티 원두]", "(HOT) 아메리카노 [스페셜티 원두]", "(ICE) 카페라떼 [스페셜 티 원두]"]], ["씨푸드 리조또", ["중", "약", "강", "(ICE) 아메리카노 [스페셜티 원두] + 중", "(ICE) 아메리카노 [스페셜티 원두] + 약", "(HOT) 아메리카노 [스페셜티 원두] + 중"]], ["불고기 피자", ["Small", "Large", "Small + 피자치즈 추가", "Large + 피자치즈 추가"]], ["잠봉 루꼴라 피자", ["Small", "Large", "Small + 피자치즈 추가", "Large + 피자치즈 추가"]], ["더 시그니처 그리들", ["(ICE) 아메리카노 [스페셜티 원두]", "(HOT) 아메리카노 [스페셜티 원두]"]], ["해물 토마토 뚝배기 파스타", ["중", "약", "강", "(ICE) 아메리카노 [스페셜티 원두] + 약", "(ICE) 아메리카노 [스페셜티 원두] + 중", "(HOT) 아메리카노 [스페셜티 원두] + 중"]], ["치킨 필라프", ["순한맛", "매운맛", "(ICE) 아메리카노 [스페셜티 원두] + 순한맛", "(ICE) 아메리카노 [스페셜티 원두] + 매운맛"]], ["수제 함박 스테이크", ["(ICE) 아메리카노 [스페셜티 원두]", "(HOT) 아메리카노 [스페셜티 원두]", "(ICE) 카페라떼 [스페셜 티 원두]"]], ["블랙 스톤 스테이크", ["(ICE) 아메리카노 [스페셜티 원두]", "(ICE) 카페라떼 [스페셜 티 원두]", "(HOT) 카페라떼 [스페셜 티 원두]"]], ["[리뷰이벤트] 리뷰이벤트증정", []], ["스테이크 로제 파스타", ["갈릭스틱", "(ICE) 아메리카노 [스페셜티 원두]"]], ["감바스 오일 파스타", ["중", "약", "강", "(ICE) 아메리카노 [스페셜티 원두] + 약", "(ICE) 아메리카노 [스페셜티 원두] + 중", "(HOT) 아메리카노 [스페셜티 원두] + 중"]], ["불고기 샐러드 파스타", []], ["베이컨 새우 로제 파스타", ["갈릭스틱", "(ICE) 아메리카노 [스페셜티 원두]", "(ICE) 카페라떼 [스페셜 티 원두]"]], ["아라비아따 파스타", ["중", "강", "약", "(ICE) 아메리카노 [스페셜티 원두] + 중", "(HOT) 아메리카노 [스페셜티 원두] + 약", "(ICE) 카페라떼 [스페셜 티 원두] + 중"]], ["벨지안 포테이토", []], ["바질 페스토 리조또", ["(ICE) 아메리카노 [스페셜티 원두]", "(HOT) 아메리카노 [스페셜티 원두]", "(ICE) 카페라떼 [스페셜 티 원두]"]], ["[리뷰이벤트] 아메리카노", ["ICE", "HOT"]], ["베이컨 토마토 파스타", ["(ICE) 아메리카노 [스페셜티 원두]"]], ["감바스 크림 파스타", ["갈릭스틱", "(ICE) 아메리카노 [스페셜티 원두]", "(ICE) 아메리카노 [스페셜티 원두] + 갈릭스틱"]], ["삼겹살 스테이크", ["순한맛", "매운맛", "(ICE) 아메리카노 [스페셜티 원두] + 순한맛", "(ICE) 카페라떼 [스페셜 티 원두] + 순한맛", "(HOT) 아메리카노 [스페셜티 원두] + 매운맛", "(HOT) 카페라떼 [스페셜 티 원두] + 순한맛"]], ["크림생맥주 300ml", []], ["하우스 샐러드", ["발사믹 드레싱(추천)", "레몬 요거트 드레싱", "머스타드 크리미 드레싱", "페퍼로니 드레싱"]], ["바질 크림 치즈 피자", ["Small", "Large", "Large + 피자치즈 추가"]], ["크림생맥주 500ml", []], ["프렌치 토스트", ["(ICE) 아메리카노 [스페셜티 원두]", "(ICE) 카페라떼 [스페셜 티 원두]", "(HOT) 아메리카노 [스페셜티 원두]", "(HOT) 카페라떼 [스페셜 티 원두]"]], ["아메리카노 [스페셜 티 원두]", ["ICE", "ICE + 먹고가기", "HOT", "ICE + 디카페인 변경", "HOT + 먹고가기", "ICE + 포장하기(take out)"]], ["샤인머스켓 에이드", ["먹고가기"]], ["불고기 깻잎 파스타", ["갈릭스틱", "(ICE) 아메리카노 [스페셜티 원두]", "(ICE) 아메리카노 [스페셜티 원두] + 갈릭스틱", "(ICE) 카페라떼 [스페셜 티 원두]"]], ["자몽에이드", ["먹고가기", "포장하기(take out)"]], ["레몬 에이드", ["먹고가기"]], ["허니 갈릭 치킨 퐁듀", []], ["포크 찹 스테이크", ["(ICE) 아메리카노 [스페셜티 원두]", "(HOT) 아메리카노 [스페셜티 원두]"]], ["쉬림프 오븐 토마토 파스타", ["(ICE) 아메리카노 [스페셜티 원두]", "(ICE) 카페라떼 [스페셜 티 원두]"]]], tables: ["1층-1", "1층-2", "1층-3", "1층-4", "1층-5", "1층-6", "1층-7", "1층-8", "1층-9", "1층-10", "1층-11", "1층-12", "1층-13", "1층-14", "1층-15", "1층-16", "1층-17", "1층-18", "1층-19", "1층-20", "1층-21", "1층-22", "1층-23", "1층-24", "1층-25", "1층-26", "1층-27", "1층-28", "1층-29", "1층-30", "2층-1", "2층-2", "2층-3", "2층-4", "2층-5", "2층-6", "2층-7", "2층-8", "2층-9", "2층-10", "2층-11", "2층-12", "2층-13", "2층-14", "2층-15", "2층-16", "2층-17", "2층-18", "2층-19", "2층-20", "2층-21", "2층-22", "2층-23", "2층-24", "2층-25", "2층-26", "2층-27", "2층-28", "2층-29", "2층-30", "포장1", "포장2", "포장3"], nextId: 9000, nextItem: 90000, auto: null};
 const DEMO_START = JSON.parse(JSON.stringify(DEMO.tickets));
 
@@ -307,8 +310,9 @@ function demoAuto() {
   const btn = document.getElementById("demoAuto");
   if (DEMO.auto) {
     clearInterval(DEMO.auto); DEMO.auto = null;
-    btn.textContent = "자동 꺼짐";
+    btn.textContent = "자동";
     btn.style.background = "#2b3446";
+    btn.style.color = "#f4f7fb";
   } else {
     DEMO.auto = setInterval(() => { demoAddTicket(); refresh(); }, 6000);
     btn.textContent = "자동 켜짐";
@@ -320,9 +324,17 @@ function demoAuto() {
 function demoReset() {
   if (DEMO.auto) { clearInterval(DEMO.auto); DEMO.auto = null; }
   DEMO.tickets = JSON.parse(JSON.stringify(DEMO_START));
+  // 시각도 처음 상태로 되돌린다. 안 그러면 계속 오래된 주문서로 남는다.
+  const now = Date.now() / 1000;
+  for (const t of DEMO.tickets) {
+    if (typeof t.age_min === "number") {
+      t.received_at = now - t.age_min * 60;
+      t.ordered_at = t.received_at;
+    }
+  }
   DEMO.rev += 1;
   const btn = document.getElementById("demoAuto");
-  if (btn) { btn.textContent = "자동 꺼짐"; btn.style.background = "#2b3446"; btn.style.color = ""; }
+  if (btn) { btn.textContent = "자동"; btn.style.background = "#2b3446"; btn.style.color = "#f4f7fb"; }
   if (typeof refresh === "function") { seenIds = null; refresh(); }
 }
 
@@ -380,20 +392,17 @@ window.addEventListener("load", function () {
   h.insertAdjacentHTML("afterend",
     '<span style="font-size:13px;font-weight:800;padding:4px 9px;border-radius:7px;' +
     'background:rgba(255,201,92,.18);color:#ffc95c">예시</span>');
-  const style = "min-height:48px;padding:0 16px;border-radius:10px;background:#2b3446;" +
-                "font-size:15px;font-weight:700;white-space:nowrap;color:#f4f7fb;" +
+  // 시험용 단추는 남은 메뉴 표시와 보기 토글 사이에 둔다
+  const style = "height:34px;padding:0 11px;border-radius:9px;background:#2b3446;" +
+                "font-size:13px;font-weight:700;white-space:nowrap;color:#f4f7fb;" +
                 "border:1px solid #3a465e";
-  document.querySelector("header").insertAdjacentHTML("afterend",
-    '<div style="display:flex;gap:8px;align-items:center;padding:8px 14px;' +
-    'background:#161b26;border-bottom:1px solid #2b3446">' +
-    '<span style="font-size:13px;color:#93a1b8;font-weight:700;margin-right:4px">' +
-    '시험용</span>' +
+  document.querySelector("header .spacer").insertAdjacentHTML("afterend",
+    '<span style="font-size:11px;color:#93a1b8;font-weight:700">시험용</span>' +
     '<button onclick="demoAddTicket()" style="' + style + '">주문 1건</button>' +
     '<button onclick="demoBurst(5)" style="' + style + '">연속 5건</button>' +
-    '<button id="demoAuto" onclick="demoAuto()" style="' + style + '">자동 꺼짐</button>' +
+    '<button id="demoAuto" onclick="demoAuto()" style="' + style + '">자동</button>' +
     '<button onclick="demoReset()" style="' + style + '">처음으로</button>' +
-    '<span style="margin-left:auto;font-size:13px;color:#93a1b8">' +
-    '두 손가락으로 벌리면 글자가 커집니다</span></div>');
+    '<span style="flex:1"></span>');
 });
 </script>
 <script>
@@ -526,23 +535,36 @@ function fingerGap(touches) {
   return Math.hypot(dx, dy);
 }
 
-let pinchGap = 0, pinchFrom = 1;
+let pinchGap = 0, pinchFrom = 1, pinchWaiting = false;
+
 document.addEventListener("touchstart", e => {
-  if (e.touches.length === 2) {
+  // 손가락이 둘이 된 순간에만 기준을 잡는다. 도중에 다시 잡으면 화면이 튄다.
+  if (e.touches.length === 2 && !pinchGap) {
     pinchGap = fingerGap(e.touches);
     pinchFrom = uiScale;
-    cancelPress();          // 두 손가락이면 체크로 세지 않는다
+    cancelPress();
+    cancelSwipe();
   }
 }, {passive: false});
+
 document.addEventListener("touchmove", e => {
-  if (e.touches.length === 2 && pinchGap) {
-    e.preventDefault();
-    const ratio = fingerGap(e.touches) / pinchGap;
-    uiScale = Math.min(2.2, Math.max(0.6, pinchFrom * ratio));
-    applyScale(true);
-  }
+  if (e.touches.length !== 2 || !pinchGap) return;
+  e.preventDefault();                       // 브라우저 확대가 끼어들지 못하게
+  const gap = fingerGap(e.touches);
+  if (Math.abs(gap - pinchGap) < 12) return;  // 손 떨림은 무시
+  const wanted = pinchFrom * (gap / pinchGap);
+  // 0.05 단위로 끊어야 화면을 다시 그리는 횟수가 줄어 매끄럽다
+  const stepped = Math.min(2.2, Math.max(0.6, Math.round(wanted * 20) / 20));
+  if (stepped === uiScale || pinchWaiting) return;
+  uiScale = stepped;
+  pinchWaiting = true;
+  requestAnimationFrame(() => { pinchWaiting = false; applyScale(true); });
 }, {passive: false});
-document.addEventListener("touchend", () => { pinchGap = 0; }, {passive: true});
+
+document.addEventListener("touchend", e => {
+  if (e.touches.length < 2) pinchGap = 0;
+}, {passive: true});
+document.addEventListener("touchcancel", () => { pinchGap = 0; }, {passive: true});
 
 function flashScreen() {
   const box = document.getElementById("flash");
@@ -555,11 +577,14 @@ function itemHtml(item) {
   const on = isServed(item);
   const opt = item.option ? '<div class="opt">' + esc(item.option) + "</div>" : "";
   const qty = item.qty > 1 ? '<span class="qty">x' + item.qty + "</span>" : "";
-  const gar = findGarnish(item.menu)
-    ? '<div class="gar" data-gar="' + esc(item.menu) + '">가니쉬</div>' : "";
-  return '<div class="item ' + (on ? "on" : "") + '" data-id="' + item.id + '">' +
+  const hasGar = !!findGarnish(item.menu);
+  const hint = hasGar
+    ? '<div class="garhint"><span>가니쉬</span><span>가니쉬</span></div>' : "";
+  return '<div class="item ' + (on ? "on" : "") + '" data-id="' + item.id + '"' +
+    (hasGar ? ' data-gar="' + esc(item.menu) + '"' : "") + ">" + hint +
+    '<div class="itembody' + (hasGar ? " hasgar" : "") + '">' +
     '<div class="box"></div><div style="flex:1;min-width:0"><div class="name">' +
-    esc(item.menu) + "</div>" + opt + "</div>" + qty + gar + "</div>";
+    esc(item.menu) + "</div>" + opt + "</div>" + qty + "</div></div>";
 }
 
 function cardHtml(head, tickets) {
@@ -659,29 +684,73 @@ function cancelPress() {
   if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
   pressedId = null;
 }
-document.getElementById("board").addEventListener("pointerdown", e => {
-  const gar = e.target.closest(".gar");
-  if (gar) { cancelPress(); openGarnish(gar.dataset.gar); return; }
+// --- 옆으로 밀면 가니쉬 ---
+let swipe = null;
+const SWIPE_START = 10;   // 이만큼 움직여야 미는 것으로 본다
+const SWIPE_OPEN = 70;    // 이만큼 밀면 안내를 연다
+
+function cancelSwipe() {
+  if (swipe && swipe.body) {
+    swipe.row.classList.remove("sliding");
+    swipe.body.style.transform = "";
+  }
+  swipe = null;
+}
+
+const board = document.getElementById("board");
+
+board.addEventListener("pointerdown", e => {
   const row = e.target.closest(".item");
   if (!row) return;
+
+  if (row.dataset.gar) {
+    swipe = {row: row, body: row.querySelector(".itembody"), menu: row.dataset.gar,
+             x: e.clientX, y: e.clientY, moving: false};
+  }
+
   pressedId = Number(row.dataset.id);
-  const on = row.classList.contains("on");
-  if (!on) return;                       // 체크는 탭
-  pressTimer = setTimeout(() => {        // 해제는 길게 눌러야 한다
+  if (!row.classList.contains("on")) return;   // 체크는 탭
+  pressTimer = setTimeout(() => {              // 해제는 길게 눌러야 한다
     pressTimer = null;
     setServed(pressedId, false);
     pressedId = null;
   }, 500);
 });
-document.getElementById("board").addEventListener("pointerup", e => {
-  if (e.target.closest(".gar")) return;
+
+board.addEventListener("pointermove", e => {
+  if (!swipe) return;
+  const dx = e.clientX - swipe.x;
+  const dy = e.clientY - swipe.y;
+  if (!swipe.moving) {
+    if (Math.abs(dy) > Math.abs(dx)) { cancelSwipe(); return; }  // 세로로 넘기는 중
+    if (Math.abs(dx) < SWIPE_START) return;
+    swipe.moving = true;
+    swipe.row.classList.add("sliding");
+    cancelPress();                              // 미는 동안은 체크로 세지 않는다
+  }
+  const capped = Math.max(-110, Math.min(110, dx));
+  swipe.body.style.transform = "translateX(" + capped + "px)";
+});
+
+board.addEventListener("pointerup", e => {
+  if (swipe && swipe.moving) {
+    const dx = e.clientX - swipe.x;
+    const menu = swipe.menu;
+    cancelSwipe();
+    cancelPress();
+    if (Math.abs(dx) >= SWIPE_OPEN) openGarnish(menu);
+    return;
+  }
+  cancelSwipe();
+
   const row = e.target.closest(".item");
   const id = pressedId;          // 길게 눌러 해제됐으면 타이머가 이미 비워 놓는다
   cancelPress();
   if (!row || id === null) return;
   if (!row.classList.contains("on")) setServed(id, true);
 });
-document.getElementById("board").addEventListener("pointercancel", cancelPress);
+
+board.addEventListener("pointercancel", () => { cancelPress(); cancelSwipe(); });
 
 async function setServed(itemId, served) {
   pending[itemId] = served;

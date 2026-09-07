@@ -20,35 +20,35 @@ PAGE = """<!doctype html>
   html, body {
     margin:0; height:100%; background:var(--bg); color:var(--text);
     font-family:"Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR",system-ui,sans-serif;
-    touch-action:manipulation; user-select:none; -webkit-user-select:none;
+    touch-action:pan-y; user-select:none; -webkit-user-select:none;
     overscroll-behavior:contain;
   }
   button { font:inherit; color:inherit; background:none; border:none; cursor:pointer; }
 
   header {
-    position:sticky; top:0; z-index:20; height:64px; display:flex; align-items:center;
-    gap:14px; padding:0 14px; background:rgba(17,20,27,.97);
+    position:sticky; top:0; z-index:20; height:48px; display:flex; align-items:center;
+    gap:8px; padding:0 10px; background:rgba(17,20,27,.97);
     border-bottom:1px solid var(--line);
   }
-  h1 { font-size:20px; margin:0; font-weight:800; letter-spacing:-.02em; white-space:nowrap;
+  h1 { font-size:16px; margin:0; font-weight:800; letter-spacing:-.02em; white-space:nowrap;
        flex:0 0 auto; }
-  .count { font-size:15px; color:var(--muted); font-weight:700; white-space:nowrap;
-           overflow:hidden; text-overflow:ellipsis; }
+  .count { font-size:13px; color:var(--muted); font-weight:700; white-space:nowrap;
+           overflow:hidden; text-overflow:ellipsis; flex:0 1 auto; }
   .spacer { flex:1; }
 
   .toggle { display:flex; border:1px solid var(--line2); border-radius:10px; overflow:hidden;
             flex:0 0 auto; }
-  .toggle button { padding:10px 13px; font-size:15px; font-weight:700; color:var(--muted);
+  .toggle button { padding:7px 11px; font-size:13.5px; font-weight:700; color:var(--muted);
                    white-space:nowrap; }
   .toggle button.on { background:var(--accent); color:var(--accent-ink); }
 
   .find {
-    width:72px; height:72px; border-radius:50%; background:var(--accent);
-    color:var(--accent-ink); font-size:15px; font-weight:800; line-height:1.2;
-    box-shadow:0 3px 10px rgba(0,0,0,.4); flex:0 0 auto;
+    height:38px; padding:0 16px; border-radius:19px; background:var(--accent);
+    color:var(--accent-ink); font-size:14px; font-weight:800;
+    box-shadow:0 2px 8px rgba(0,0,0,.35); flex:0 0 auto; white-space:nowrap;
   }
 
-  main { padding:12px; display:grid; gap:12px;
+  main { padding:12px; display:grid; gap:12px; touch-action:pan-y;
          grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); }
 
   .card { background:var(--card); border:1px solid var(--line); border-left:5px solid var(--line);
@@ -71,9 +71,17 @@ PAGE = """<!doctype html>
   .clear { width:100%; min-height:56px; background:var(--done); color:#0d2417;
            font-size:18px; font-weight:800; border-top:1px solid var(--line); }
 
-  .item { display:flex; align-items:center; gap:12px; min-height:64px;
-          padding:8px 14px; border-top:1px solid var(--line); }
+  .item { position:relative; overflow:hidden; border-top:1px solid var(--line); }
   .item:first-of-type { border-top:none; }
+  .itembody { display:flex; align-items:center; gap:12px; min-height:64px;
+              padding:8px 14px; background:var(--card); position:relative; z-index:1;
+              transition:transform .18s ease-out; }
+  .item.sliding .itembody { transition:none; }
+  /* 가니쉬가 있는 줄은 왼쪽에 작은 표시를 둬서 밀 수 있다는 걸 알린다 */
+  .itembody.hasgar { box-shadow:inset 3px 0 0 rgba(255,201,92,.55); }
+  .garhint { position:absolute; inset:0; display:flex; align-items:center;
+             justify-content:space-between; padding:0 22px; font-size:16px; font-weight:800;
+             color:var(--accent-ink); background:var(--accent); }
   .box { width:28px; height:28px; flex:0 0 auto; border:2.5px solid var(--line2);
          border-radius:7px; position:relative; }
   .item.on .box { background:var(--done); border-color:var(--done); }
@@ -86,11 +94,6 @@ PAGE = """<!doctype html>
          background:rgba(255,201,92,.14); padding:3px 9px; border-radius:7px; }
 
   /* 가니쉬 */
-  .gar { flex:0 0 auto; min-width:52px; min-height:44px; display:flex; align-items:center;
-         justify-content:center; border:1px solid var(--line2); border-radius:9px;
-         font-size:13px; font-weight:800; color:var(--muted); margin-left:6px; }
-  .item.on .gar { opacity:.35; }
-
   .garbox { position:fixed; inset:0; z-index:60; background:rgba(8,10,14,.86); display:none;
             align-items:center; justify-content:center; padding:24px; }
   .garbox.show { display:flex; }
@@ -166,7 +169,7 @@ PAGE = """<!doctype html>
   }
 
   /* 카드를 가리지 않도록 머리말 아래 띠로 붙인다 */
-  .pending { position:sticky; top:64px; z-index:35; display:none;
+  .pending { position:sticky; top:48px; z-index:35; display:none;
              background:var(--accent); color:var(--accent-ink);
              padding:16px; font-size:21px; font-weight:800; text-align:center;
              box-shadow:0 4px 14px rgba(0,0,0,.4); animation:pulse 1.8s ease-in-out infinite; }
@@ -198,7 +201,7 @@ PAGE = """<!doctype html>
     <button id="autoAdd" onclick="setHold(false)">바로 넣기</button>
     <button id="holdNew" onclick="setHold(true)">모아두기</button>
   </div>
-  <button class="find" onclick="openFind()">메뉴<br>찾기</button>
+  <button class="find" onclick="openFind()">메뉴 찾기</button>
 </header>
 
 <div class="pending" id="pending" onclick="showPending()"></div>
@@ -364,23 +367,36 @@ function fingerGap(touches) {
   return Math.hypot(dx, dy);
 }
 
-let pinchGap = 0, pinchFrom = 1;
+let pinchGap = 0, pinchFrom = 1, pinchWaiting = false;
+
 document.addEventListener("touchstart", e => {
-  if (e.touches.length === 2) {
+  // 손가락이 둘이 된 순간에만 기준을 잡는다. 도중에 다시 잡으면 화면이 튄다.
+  if (e.touches.length === 2 && !pinchGap) {
     pinchGap = fingerGap(e.touches);
     pinchFrom = uiScale;
-    cancelPress();          // 두 손가락이면 체크로 세지 않는다
+    cancelPress();
+    cancelSwipe();
   }
 }, {passive: false});
+
 document.addEventListener("touchmove", e => {
-  if (e.touches.length === 2 && pinchGap) {
-    e.preventDefault();
-    const ratio = fingerGap(e.touches) / pinchGap;
-    uiScale = Math.min(2.2, Math.max(0.6, pinchFrom * ratio));
-    applyScale(true);
-  }
+  if (e.touches.length !== 2 || !pinchGap) return;
+  e.preventDefault();                       // 브라우저 확대가 끼어들지 못하게
+  const gap = fingerGap(e.touches);
+  if (Math.abs(gap - pinchGap) < 12) return;  // 손 떨림은 무시
+  const wanted = pinchFrom * (gap / pinchGap);
+  // 0.05 단위로 끊어야 화면을 다시 그리는 횟수가 줄어 매끄럽다
+  const stepped = Math.min(2.2, Math.max(0.6, Math.round(wanted * 20) / 20));
+  if (stepped === uiScale || pinchWaiting) return;
+  uiScale = stepped;
+  pinchWaiting = true;
+  requestAnimationFrame(() => { pinchWaiting = false; applyScale(true); });
 }, {passive: false});
-document.addEventListener("touchend", () => { pinchGap = 0; }, {passive: true});
+
+document.addEventListener("touchend", e => {
+  if (e.touches.length < 2) pinchGap = 0;
+}, {passive: true});
+document.addEventListener("touchcancel", () => { pinchGap = 0; }, {passive: true});
 
 function flashScreen() {
   const box = document.getElementById("flash");
@@ -393,11 +409,14 @@ function itemHtml(item) {
   const on = isServed(item);
   const opt = item.option ? '<div class="opt">' + esc(item.option) + "</div>" : "";
   const qty = item.qty > 1 ? '<span class="qty">x' + item.qty + "</span>" : "";
-  const gar = findGarnish(item.menu)
-    ? '<div class="gar" data-gar="' + esc(item.menu) + '">가니쉬</div>' : "";
-  return '<div class="item ' + (on ? "on" : "") + '" data-id="' + item.id + '">' +
+  const hasGar = !!findGarnish(item.menu);
+  const hint = hasGar
+    ? '<div class="garhint"><span>가니쉬</span><span>가니쉬</span></div>' : "";
+  return '<div class="item ' + (on ? "on" : "") + '" data-id="' + item.id + '"' +
+    (hasGar ? ' data-gar="' + esc(item.menu) + '"' : "") + ">" + hint +
+    '<div class="itembody' + (hasGar ? " hasgar" : "") + '">' +
     '<div class="box"></div><div style="flex:1;min-width:0"><div class="name">' +
-    esc(item.menu) + "</div>" + opt + "</div>" + qty + gar + "</div>";
+    esc(item.menu) + "</div>" + opt + "</div>" + qty + "</div></div>";
 }
 
 function cardHtml(head, tickets) {
@@ -497,29 +516,73 @@ function cancelPress() {
   if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
   pressedId = null;
 }
-document.getElementById("board").addEventListener("pointerdown", e => {
-  const gar = e.target.closest(".gar");
-  if (gar) { cancelPress(); openGarnish(gar.dataset.gar); return; }
+// --- 옆으로 밀면 가니쉬 ---
+let swipe = null;
+const SWIPE_START = 10;   // 이만큼 움직여야 미는 것으로 본다
+const SWIPE_OPEN = 70;    // 이만큼 밀면 안내를 연다
+
+function cancelSwipe() {
+  if (swipe && swipe.body) {
+    swipe.row.classList.remove("sliding");
+    swipe.body.style.transform = "";
+  }
+  swipe = null;
+}
+
+const board = document.getElementById("board");
+
+board.addEventListener("pointerdown", e => {
   const row = e.target.closest(".item");
   if (!row) return;
+
+  if (row.dataset.gar) {
+    swipe = {row: row, body: row.querySelector(".itembody"), menu: row.dataset.gar,
+             x: e.clientX, y: e.clientY, moving: false};
+  }
+
   pressedId = Number(row.dataset.id);
-  const on = row.classList.contains("on");
-  if (!on) return;                       // 체크는 탭
-  pressTimer = setTimeout(() => {        // 해제는 길게 눌러야 한다
+  if (!row.classList.contains("on")) return;   // 체크는 탭
+  pressTimer = setTimeout(() => {              // 해제는 길게 눌러야 한다
     pressTimer = null;
     setServed(pressedId, false);
     pressedId = null;
   }, 500);
 });
-document.getElementById("board").addEventListener("pointerup", e => {
-  if (e.target.closest(".gar")) return;
+
+board.addEventListener("pointermove", e => {
+  if (!swipe) return;
+  const dx = e.clientX - swipe.x;
+  const dy = e.clientY - swipe.y;
+  if (!swipe.moving) {
+    if (Math.abs(dy) > Math.abs(dx)) { cancelSwipe(); return; }  // 세로로 넘기는 중
+    if (Math.abs(dx) < SWIPE_START) return;
+    swipe.moving = true;
+    swipe.row.classList.add("sliding");
+    cancelPress();                              // 미는 동안은 체크로 세지 않는다
+  }
+  const capped = Math.max(-110, Math.min(110, dx));
+  swipe.body.style.transform = "translateX(" + capped + "px)";
+});
+
+board.addEventListener("pointerup", e => {
+  if (swipe && swipe.moving) {
+    const dx = e.clientX - swipe.x;
+    const menu = swipe.menu;
+    cancelSwipe();
+    cancelPress();
+    if (Math.abs(dx) >= SWIPE_OPEN) openGarnish(menu);
+    return;
+  }
+  cancelSwipe();
+
   const row = e.target.closest(".item");
   const id = pressedId;          // 길게 눌러 해제됐으면 타이머가 이미 비워 놓는다
   cancelPress();
   if (!row || id === null) return;
   if (!row.classList.contains("on")) setServed(id, true);
 });
-document.getElementById("board").addEventListener("pointercancel", cancelPress);
+
+board.addEventListener("pointercancel", () => { cancelPress(); cancelSwipe(); });
 
 async function setServed(itemId, served) {
   pending[itemId] = served;
