@@ -68,6 +68,9 @@ PAGE = """<!doctype html>
   .group { padding:6px 14px 2px; font-size:13px; font-weight:700; color:var(--muted);
            border-top:1px dashed var(--line2); margin-top:4px; }
 
+  .clear { width:100%; min-height:56px; background:var(--done); color:#0d2417;
+           font-size:18px; font-weight:800; border-top:1px solid var(--line); }
+
   .item { display:flex; align-items:center; gap:12px; min-height:64px;
           padding:8px 14px; border-top:1px solid var(--line); }
   .item:first-of-type { border-top:none; }
@@ -81,6 +84,32 @@ PAGE = """<!doctype html>
   .item.on .name, .item.on .opt { text-decoration:line-through; opacity:.45; }
   .qty { margin-left:auto; font-size:17px; font-weight:800; color:var(--accent);
          background:rgba(255,201,92,.14); padding:3px 9px; border-radius:7px; }
+
+  /* 가니쉬 */
+  .gar { flex:0 0 auto; min-width:52px; min-height:44px; display:flex; align-items:center;
+         justify-content:center; border:1px solid var(--line2); border-radius:9px;
+         font-size:13px; font-weight:800; color:var(--muted); margin-left:6px; }
+  .item.on .gar { opacity:.35; }
+
+  .garbox { position:fixed; inset:0; z-index:60; background:rgba(8,10,14,.86); display:none;
+            align-items:center; justify-content:center; padding:24px; }
+  .garbox.show { display:flex; }
+  .garcard { background:var(--card); border:1px solid var(--line2); border-radius:18px;
+             padding:24px 26px; max-width:640px; width:100%; max-height:88%; overflow-y:auto; }
+  .garcard h2 { margin:0 0 4px; font-size:30px; font-weight:800; }
+  .garcard .sec { font-size:14px; color:var(--muted); font-weight:700; margin-bottom:18px; }
+  .garcard .lab { font-size:14px; color:var(--muted); font-weight:800; margin:16px 0 8px; }
+  .steps { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+  .step { background:rgba(255,201,92,.16); color:var(--accent); border-radius:10px;
+          padding:11px 15px; font-size:20px; font-weight:800; }
+  .arrow { color:var(--muted); font-size:18px; font-weight:800; }
+  .sepv { background:rgba(126,230,168,.14); color:var(--takeout); border-radius:10px;
+          padding:11px 15px; font-size:19px; font-weight:800; }
+  .toolv { background:var(--line); border-radius:10px; padding:11px 15px; font-size:19px;
+           font-weight:700; }
+  .garcard .close { width:100%; min-height:60px; margin-top:24px; border-radius:12px;
+                    background:var(--line); font-size:18px; font-weight:800; }
+  .garnone { color:var(--muted); font-size:17px; line-height:1.8; }
 
   .empty { grid-column:1/-1; text-align:center; color:var(--muted); padding:80px 20px;
            font-size:16px; line-height:2; }
@@ -199,6 +228,10 @@ PAGE = """<!doctype html>
   <div class="ov-body" id="findBody"></div>
 </div>
 
+<div class="garbox" id="garbox" onclick="closeGarnish(event)">
+  <div class="garcard" id="garcard" onclick="event.stopPropagation()"></div>
+</div>
+
 <div class="offline" id="offline">연결이 끊겼습니다<br>화면이 최신이 아닙니다</div>
 
 <script>
@@ -213,6 +246,59 @@ let uiScale = parseFloat(localStorage.getItem("hallScale") || "1") || 1;
 let pending = {};          // 서버 응답 전에도 즉시 반응하도록
 let sheetTicket = null, lastDone = null, lastOk = Date.now();
 let menus = [], findResults = null;
+let garnish = null;      // 메뉴이름(다듬은 것) -> 안내
+
+function garKey(name) {
+  return String(name || "").replace(/[\(\[][^\)\]]*[\)\]]/g, " ")
+    .replace(/\s+/g, "").toLowerCase();
+}
+
+function findGarnish(menu) {
+  if (!garnish) return null;
+  const key = garKey(menu);
+  if (!key) return null;
+  if (garnish[key]) return garnish[key];
+  let best = null, bestLen = 0;
+  for (const k in garnish) {
+    if (k.length < 4 || k.length <= bestLen) continue;
+    if (k.indexOf(key) >= 0 || key.indexOf(k) >= 0) { best = garnish[k]; bestLen = k.length; }
+  }
+  return best;
+}
+
+function garnishHtml(info, withClose) {
+  const steps = info.sprinkle.length
+    ? '<div class="lab">뿌리는 순서</div><div class="steps">' +
+      info.sprinkle.map(esc).map(v => '<span class="step">' + v + "</span>")
+        .join('<span class="arrow">&#9654;</span>') + "</div>"
+    : "";
+  const sep = info.separate.length
+    ? '<div class="lab">따로 내기</div><div class="steps">' +
+      info.separate.map(v => '<span class="sepv">' + esc(v) + "</span>").join("") + "</div>"
+    : "";
+  const tools = info.tools
+    ? '<div class="lab">집기</div><div class="steps"><span class="toolv">' +
+      esc(info.tools) + "</span></div>"
+    : "";
+  const none = (!steps && !sep && !tools)
+    ? '<div class="garnone">이 메뉴는 가니쉬 안내가 없습니다</div>' : "";
+  return "<h2>" + esc(info.menu) + "</h2>" +
+    '<div class="sec">' + esc(info.section || "") + "</div>" +
+    steps + sep + tools + none +
+    (withClose ? '<button class="close" onclick="closeGarnish()">닫기</button>' : "");
+}
+
+function openGarnish(menu) {
+  const info = findGarnish(menu);
+  if (!info) return;
+  document.getElementById("garcard").innerHTML = garnishHtml(info, true);
+  document.getElementById("garbox").classList.add("show");
+}
+
+function closeGarnish(event) {
+  if (event && event.target.id !== "garbox") return;
+  document.getElementById("garbox").classList.remove("show");
+}
 
 const CHO = ["ㄱ","ㄲ","ㄴ","ㄷ","ㄸ","ㄹ","ㅁ","ㅂ","ㅃ","ㅅ","ㅆ","ㅇ","ㅈ","ㅉ","ㅊ","ㅋ","ㅌ","ㅍ","ㅎ"];
 function chosung(text) {
@@ -261,7 +347,8 @@ function showPending() {
 
 // --- 화면 크기 (두 손가락으로 벌리고 오므리기) ---
 function applyScale(showHint) {
-  document.body.style.zoom = uiScale;
+  // 주문서 영역만 키운다. 상단바는 늘 같은 크기여야 조작이 흔들리지 않는다.
+  document.getElementById("board").style.zoom = uiScale;
   localStorage.setItem("hallScale", String(uiScale));
   if (!showHint) return;
   const hint = document.getElementById("zoomHint");
@@ -306,9 +393,11 @@ function itemHtml(item) {
   const on = isServed(item);
   const opt = item.option ? '<div class="opt">' + esc(item.option) + "</div>" : "";
   const qty = item.qty > 1 ? '<span class="qty">x' + item.qty + "</span>" : "";
+  const gar = findGarnish(item.menu)
+    ? '<div class="gar" data-gar="' + esc(item.menu) + '">가니쉬</div>' : "";
   return '<div class="item ' + (on ? "on" : "") + '" data-id="' + item.id + '">' +
-    '<div class="box"></div><div><div class="name">' + esc(item.menu) + "</div>" + opt +
-    "</div>" + qty + "</div>";
+    '<div class="box"></div><div style="flex:1;min-width:0"><div class="name">' +
+    esc(item.menu) + "</div>" + opt + "</div>" + qty + gar + "</div>";
 }
 
 function cardHtml(head, tickets) {
@@ -325,7 +414,24 @@ function cardHtml(head, tickets) {
     }
     body += t.items.map(itemHtml).join("");
   });
+  const ready = tickets.filter(t => t.status === "ready");
+  if (ready.length) {
+    const label = ready.length > 1 ? "주문서 " + ready.length + "장 내리기" : "주문서 내리기";
+    body += '<button class="clear" onclick="clearTickets(' +
+      JSON.stringify(ready.map(t => t.id)).replace(/"/g, "&quot;") + ')">' + label + "</button>";
+  }
   return '<div class="card ' + cls + '">' + head + body + "</div>";
+}
+
+async function clearTickets(ids) {
+  for (const id of ids) {
+    await post("/api/hall/tickets/" + id + "/status", {status: "done"});
+  }
+  lastDone = ids[ids.length - 1];
+  const bar = document.getElementById("undo");
+  bar.classList.add("show");
+  setTimeout(() => bar.classList.remove("show"), 20000);
+  await refresh();
 }
 
 function headHtml(t, extra) {
@@ -392,6 +498,8 @@ function cancelPress() {
   pressedId = null;
 }
 document.getElementById("board").addEventListener("pointerdown", e => {
+  const gar = e.target.closest(".gar");
+  if (gar) { cancelPress(); openGarnish(gar.dataset.gar); return; }
   const row = e.target.closest(".item");
   if (!row) return;
   pressedId = Number(row.dataset.id);
@@ -404,6 +512,7 @@ document.getElementById("board").addEventListener("pointerdown", e => {
   }, 500);
 });
 document.getElementById("board").addEventListener("pointerup", e => {
+  if (e.target.closest(".gar")) return;
   const row = e.target.closest(".item");
   const id = pressedId;          // 길게 눌러 해제됐으면 타이머가 이미 비워 놓는다
   cancelPress();
@@ -493,10 +602,18 @@ async function searchMenu(menu) {
 
 function hitsHtml(r) {
   if (!r.tickets.length) {
-    return '<div class="empty"><b>' + esc(r.menu) + "</b>오늘 이 메뉴 주문이 없습니다</div>";
+    const only = findGarnish(r.menu);
+    return '<div class="chips"><button class="chip" onclick="findResults=null;renderFind()">' +
+      "&#8592; 메뉴 다시 고르기</button></div>" +
+      (only ? '<div class="hit">' + garnishHtml(only, false) + "</div>" : "") +
+      '<div class="empty"><b>' + esc(r.menu) + "</b>오늘 이 메뉴 주문이 없습니다</div>";
   }
+  const info = findGarnish(r.menu);
+  const garCard = info
+    ? '<div class="hit" style="border-color:var(--line2)">' + garnishHtml(info, false) + "</div>"
+    : "";
   return '<div class="chips"><button class="chip" onclick="findResults=null;renderFind()">' +
-    "&#8592; 메뉴 다시 고르기</button></div>" +
+    "&#8592; 메뉴 다시 고르기</button></div>" + garCard +
     r.tickets.map(t => {
       const when = new Date(t.received_at * 1000);
       const time = String(when.getHours()).padStart(2, "0") + ":" +
@@ -570,6 +687,9 @@ async function refresh() {
 
 applyScale(false);
 setView(view);
+getJson("/api/hall/garnish")
+  .then(data => { garnish = data.garnish || {}; render(); })
+  .catch(() => { garnish = {}; });
 refresh();
 setInterval(refresh, 1500);
 setInterval(render, 20000);   // 경과 시간 표시를 계속 맞춘다

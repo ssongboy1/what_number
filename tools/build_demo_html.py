@@ -18,26 +18,27 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from what_number.hall_page import PAGE  # noqa: E402
-from what_number.hall_web import chosung  # noqa: E402
+from what_number.hall_web import chosung, garnish_table  # noqa: E402
 from what_number.sample_tickets import random_items, random_table  # noqa: E402
 
 OUTPUT = ROOT / "홀주문서_예시.html"
-TICKET_COUNT = 14
+# 처음 화면은 주문서 3장으로 시작한다. 경과 시간 색이 어떻게 달라지는지
+# 한눈에 보이도록 기본(10분 미만)/노랑(10~20분)/빨강(20분 초과)을 하나씩 둔다.
+START_MINUTES = (4, 14, 27)
 
 
 def make_tickets() -> list:
-    """예시로 보여줄 주문서. 시간이 제각각이라 경과 표시가 어떻게 보이는지 알 수 있다."""
+    """예시로 보여줄 주문서 3장. 경과 시간 색을 하나씩 볼 수 있게 배치한다."""
     random.seed(20260904)
     now = time.time()
     tickets = []
     item_id = 1
     tables = []
 
-    for index in range(TICKET_COUNT):
+    for index, minutes in enumerate(sorted(START_MINUTES, reverse=True)):
         table = random_table()
         tables.append(table)
-        # 오래된 것부터 최근 것까지 골고루
-        received = now - (TICKET_COUNT - index) * random.randint(70, 200)
+        received = now - minutes * 60
         rows = []
         for line_no, item in enumerate(random_items(), start=1):
             rows.append({
@@ -64,25 +65,6 @@ def make_tickets() -> list:
             "item_count": len(rows),
             "served_count": 0,
             "rev": index + 1,
-            "items": rows,
-        })
-
-    # 같은 테이블의 추가주문 한 장. 테이블별 보기를 확인하려면 필요하다.
-    if tables:
-        rows = []
-        for line_no, item in enumerate(random_items(2), start=1):
-            rows.append({
-                "id": item_id, "line_no": line_no, "menu": item.menu_name,
-                "option": item.option_text, "qty": item.quantity,
-                "served": False, "served_at": None,
-            })
-            item_id += 1
-        tickets.append({
-            "id": TICKET_COUNT + 1, "order_no": "0001-0002", "table": tables[0],
-            "table_key": "".join(tables[0].split()).replace("-", "").lower(),
-            "kind": "추가", "pos": "POS-05", "station": "3가니",
-            "received_at": now - 120, "ordered_at": now - 120, "status": "open",
-            "item_count": len(rows), "served_count": 0, "rev": TICKET_COUNT + 1,
             "items": rows,
         })
 
@@ -114,7 +96,7 @@ catch (e) {
   }});
 }
 
-const DEMO = {tickets: __TICKETS__, menus: __MENUS__, rev: 100,
+const DEMO = {tickets: __TICKETS__, menus: __MENUS__, garnish: __GARNISH__, rev: 100,
               pool: __POOL__, tables: __TABLES__, nextId: 9000, nextItem: 90000, auto: null};
 const DEMO_START = JSON.parse(JSON.stringify(DEMO.tickets));
 
@@ -136,6 +118,11 @@ function demoRecount(t) {
 function demoPick(list) { return list[Math.floor(Math.random() * list.length)]; }
 
 function demoAddTicket(table) {
+  // 가끔은 이미 있는 테이블의 추가주문으로 만든다. 테이블별 보기를 보려면 필요하다.
+  if (!table && Math.random() < 0.25) {
+    const live = DEMO.tickets.filter(t => t.status === "open" || t.status === "ready");
+    if (live.length) table = demoPick(live).table;
+  }
   const size = 1 + Math.floor(Math.random() * 4);
   const items = [];
   for (let i = 0; i < size; i++) {
@@ -205,6 +192,8 @@ window.fetch = async function (url, options) {
     payload = {rev: DEMO.rev, tickets: live, counts: {open: live.length, ready: 0}};
   } else if (path.indexOf("/api/hall/menus") === 0) {
     payload = {menus: DEMO.menus};
+  } else if (path.indexOf("/api/hall/garnish") === 0) {
+    payload = {garnish: DEMO.garnish};
   } else if (path.indexOf("/api/hall/search") === 0) {
     const wanted = decodeURIComponent(path.split("menu=")[1] || "");
     const hits = DEMO.tickets
@@ -283,6 +272,8 @@ def main() -> int:
         .replace("__MENUS__", json.dumps(menu_rows(tickets), ensure_ascii=False))
         .replace("__POOL__", json.dumps(pool, ensure_ascii=False))
         .replace("__TABLES__", json.dumps(tables, ensure_ascii=False))
+        .replace("__GARNISH__",
+                 json.dumps(garnish_table()["garnish"], ensure_ascii=False))
     )
     page = PAGE.replace("<script>", shim + BADGE + "<script>", 1)
     OUTPUT.write_text(page, encoding="utf-8")

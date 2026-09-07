@@ -257,6 +257,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json(hall_web.state(self.tickets))
         elif parsed.path == "/api/hall/menus":
             self._send_json(hall_web.menus(self.tickets))
+        elif parsed.path == "/api/hall/garnish":
+            self._send_json(hall_web.garnish_table())
         elif parsed.path == "/api/hall/search":
             self._send_json(hall_web.search(self.tickets, (query.get("menu") or [""])[0]))
         else:

@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import re
 
+from .garnish_data import GARNISH
 from .ticket_store import DONE, OPEN, TicketStore, business_day
 
 MAX_BODY = 64 * 1024
@@ -54,6 +55,24 @@ def menus(store: TicketStore, day: str | None = None) -> dict:
     for row in rows:
         row["cho"] = chosung(row["menu"])
     return {"menus": rows}
+
+
+def garnish_table() -> dict:
+    """메뉴별 가니쉬 안내 전체. 화면이 한 번 받아 두고 쓴다."""
+    from .garnish import normalize
+
+    rows = {}
+    for menu, (sprinkle, separate, tools, section) in GARNISH.items():
+        if not (sprinkle or separate or tools):
+            continue
+        rows[normalize(menu)] = {
+            "menu": menu,
+            "sprinkle": list(sprinkle),
+            "separate": list(separate),
+            "tools": tools,
+            "section": section,
+        }
+    return {"garnish": rows}
 
 
 def search(store: TicketStore, menu: str, day: str | None = None) -> dict:
