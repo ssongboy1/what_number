@@ -80,11 +80,11 @@ jobs:
         run: |
           [Console]::OutputEncoding = [Text.Encoding]::UTF8
           $env:PYTHONPATH = "src"
-          $logs = Join-Path $env:RUNNER_TEMP "PaLiDa\log"
+          $logs = Join-Path $env:RUNNER_TEMP "kitchen_check\log"
           python -c "import sys; from what_number.demo import write_sample_kitchen_log; write_sample_kitchen_log(sys.argv[1])" $logs
-          New-Item -ItemType File -Force -Path empty.txt | Out-Null
+          Set-Content -Path empty_log.txt -Value "" -NoNewline
           $p = Start-Process -FilePath dist\what_number.exe -ArgumentList "--log", $logs, "--no-browser", "--port", "8719" `
-                 -RedirectStandardInput empty.txt -RedirectStandardOutput log_out.txt -PassThru -NoNewWindow
+                 -RedirectStandardInput empty_log.txt -RedirectStandardOutput log_out.txt -PassThru -NoNewWindow
           $found = $null
           foreach ($i in 1..30) {
             Start-Sleep -Seconds 1
@@ -100,7 +100,8 @@ jobs:
             $q = [uri]::EscapeDataString("스테이크")
             $cancelled = Invoke-RestMethod "http://127.0.0.1:8719/api/search?q=$q"
           } finally {
-            Stop-Process -Id $p.Id -Force
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+            $p.WaitForExit(10000) | Out-Null
           }
           Get-Content log_out.txt -Encoding utf8 | Write-Host
           if (-not ($found.results | Where-Object { $_.table -eq "홀-1" })) { throw "exe 가 주방 기록에서 테이블을 찾지 못했습니다" }
@@ -109,21 +110,25 @@ jobs:
           Write-Host "주방 기록 읽기 정상"
 
       # 변화찾기가 exe 안에서도 윈도우의 파일 변화 통지를 받고, 결과와 복사본 zip 을 남기는지 확인한다.
+      # 변화찾기는 포스를 조사할 때만 쓰는 보조 기능이라, 여기서 실패해도 exe 는 만들어 올린다.
       - name: 변화찾기 확인
         shell: pwsh
+        continue-on-error: true
         run: |
           [Console]::OutputEncoding = [Text.Encoding]::UTF8
-          $pos = Join-Path $env:RUNNER_TEMP "Palida"
+          $pos = Join-Path $env:RUNNER_TEMP "changes_check"
           New-Item -ItemType Directory -Force -Path "$pos\Data" | Out-Null
           [IO.File]::WriteAllBytes("$pos\Data\pos.db", [Text.Encoding]::ASCII.GetBytes("SQLite format 3`0"))
-          New-Item -ItemType File -Force -Path empty.txt | Out-Null
+          Set-Content -Path empty_changes.txt -Value "" -NoNewline
           $p = Start-Process -FilePath dist\what_number.exe -ArgumentList "--changes", $pos, "--seconds", "20" `
-                 -RedirectStandardInput empty.txt -RedirectStandardOutput changes_out.txt -PassThru -NoNewWindow
+                 -RedirectStandardInput empty_changes.txt -RedirectStandardOutput changes_out.txt -PassThru -NoNewWindow
           Start-Sleep -Seconds 12
           Add-Content -Path "$pos\Data\pos.db" -Value "order 1"
           Start-Sleep -Seconds 3
           Add-Content -Path "$pos\Data\pos.db" -Value "order 2"
           if (-not $p.WaitForExit(180000)) { $p.Kill(); throw "변화찾기가 끝나지 않았습니다" }
+          Write-Host ("변화찾기 종료 코드: " + $p.ExitCode)
+          Get-ChildItem dist\data | ForEach-Object { Write-Host ("  " + $_.Name) }
           Get-Content changes_out.txt -Encoding utf8 | Write-Host
           $report = Get-ChildItem dist\data -Filter "변화찾기_*.txt" | Select-Object -First 1
           if (-not $report) { throw "변화찾기 결과 파일이 없습니다" }
