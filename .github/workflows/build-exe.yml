@@ -74,6 +74,30 @@ jobs:
           if ($out -notmatch "B-0042")        { throw "exe 가 주문번호를 읽지 못했습니다" }
           Write-Host "exe 실행 및 전표 인식 정상"
 
+      # 변화찾기가 exe 안에서도 윈도우의 파일 변화 통지를 받고, 결과와 복사본 zip 을 남기는지 확인한다.
+      - name: 변화찾기 확인
+        shell: pwsh
+        run: |
+          [Console]::OutputEncoding = [Text.Encoding]::UTF8
+          $pos = Join-Path $env:RUNNER_TEMP "Palida"
+          New-Item -ItemType Directory -Force -Path "$pos\Data" | Out-Null
+          [IO.File]::WriteAllBytes("$pos\Data\pos.db", [Text.Encoding]::ASCII.GetBytes("SQLite format 3`0"))
+          New-Item -ItemType File -Force -Path empty.txt | Out-Null
+          $p = Start-Process -FilePath dist\what_number.exe -ArgumentList "--changes", $pos, "--seconds", "20" `
+                 -RedirectStandardInput empty.txt -RedirectStandardOutput changes_out.txt -PassThru -NoNewWindow
+          Start-Sleep -Seconds 12
+          Add-Content -Path "$pos\Data\pos.db" -Value "order 1"
+          Start-Sleep -Seconds 3
+          Add-Content -Path "$pos\Data\pos.db" -Value "order 2"
+          if (-not $p.WaitForExit(180000)) { $p.Kill(); throw "변화찾기가 끝나지 않았습니다" }
+          Get-Content changes_out.txt -Encoding utf8 | Write-Host
+          $report = Get-ChildItem dist\data -Filter "변화찾기_*.txt" | Select-Object -First 1
+          if (-not $report) { throw "변화찾기 결과 파일이 없습니다" }
+          $text = Get-Content $report.FullName -Raw -Encoding utf8
+          if ($text -notmatch "SQLite 데이터베이스") { throw "변화찾기가 파일 변화를 잡지 못했습니다" }
+          if (-not (Get-ChildItem dist\data -Filter "변화찾기_*.zip")) { throw "변화찾기 zip 이 없습니다" }
+          Write-Host "변화찾기 정상"
+
       - name: 파일 정보
         shell: pwsh
         run: |

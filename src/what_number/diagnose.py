@@ -21,8 +21,8 @@ DB_SUFFIXES = (".mdb", ".accdb", ".mdf", ".db", ".sqlite", ".sqlite3", ".dbf", "
 # 포스 프로그램이 설치되어 있을 만한 곳
 SEARCH_ROOTS = ("C:\\", "C:\\Program Files", "C:\\Program Files (x86)", "D:\\")
 
-# 폴더 이름에서 찾을 단어
-POS_HINTS = ("okpos", "오케이포스", "pos", "포스")
+# 폴더 이름에서 찾을 단어. VD 포스는 C:\ 아래 palida 비슷한 이름의 폴더에 깔린다고 한다
+POS_HINTS = ("okpos", "오케이포스", "pos", "포스", "palida", "pallida", "parida", "팔리다", "vdcompany")
 
 # 프린터 통신에 쓰일 만한 포트
 PRINTER_PORTS = ("9100", "9101", "9102", "515", "4001", "6001", "950")
@@ -155,7 +155,7 @@ def database_files(folders: list) -> list:
 
 def pos_processes() -> list:
     output = _powershell(
-        "Get-Process | Where-Object { $_.ProcessName -match 'pos|okpos|sql|print' } | "
+        "Get-Process | Where-Object { $_.ProcessName -match 'pos|palida|pallida|parida|sql|print' } | "
         "ForEach-Object { $_.ProcessName + '  (' + $_.Id + ')' }"
     )
     if not output or output.startswith("("):

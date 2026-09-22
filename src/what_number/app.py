@@ -407,6 +407,115 @@ def scan(cfg: config_module.Config, seconds: int = 180) -> int:
     return 0
 
 
+def find_changes(cfg: config_module.Config, folder: str | None = None, seconds: int = 1800) -> int:
+    """주문이 들어올 때 이 PC 의 어떤 파일이 바뀌는지 찾는다. 읽기만 한다."""
+    from . import changes
+
+    print("  포스 폴더를 찾고 지금 상태를 기록하는 중입니다...")
+    folders = changes.find_pos_folders(folder)
+    ignore = [cfg.data_dir, getattr(sys, "_MEIPASS", None)]
+    session = changes.Session(folders, ignore=ignore)
+    session.start()
+    out_path = cfg.data_dir / f"변화찾기_{datetime.now():%Y%m%d_%H%M%S}.txt"
+
+    print("=" * 66)
+    print("  주문이 들어올 때 바뀌는 파일 찾기 (변화찾기)")
+    print("=" * 66)
+    if folder and not Path(folder).is_dir():
+        print(f"  ! 알려주신 폴더가 없습니다: {folder}")
+    print(f"  포스 폴더  : {', '.join(str(f) for f in folders) or '(찾지 못함. 드라이브 전체를 봅니다)'}")
+    print(f"  지켜보는 곳: {', '.join(w.root for w in session.watchers) or '(포스 폴더만)'}"
+          "  (읽기만 합니다)")
+    length = f"{seconds // 60}분" if seconds >= 60 else f"{seconds}초"
+    print(f"  최대 {length} 동안 지켜보며, 결과는 30초마다 저장합니다.")
+    for message in session.errors:
+        print("  ! " + message)
+    print("-" * 66)
+    print("  1. 포스에서 주문을 한 건 넣으세요. (주방 주문서가 나올 때까지)")
+    print("  2. 곧바로 이 검은 창을 한 번 누르고 [엔터] 를 누르세요.")
+    print("     '방금 주문 넣었음' 표시가 남습니다.")
+    print("  3. 1~2 를 두세 번 되풀이하면 더 정확해집니다.")
+    print("  4. 다 했으면  끝  이라고 치고 [엔터].")
+    print("-" * 66)
+    print("  바뀐 파일이 아래에 나타납니다. (★ = 포스 폴더 안의 파일)")
+    print()
+
+    reader = changes.KeyReader()
+    reader.start()
+    deadline = time.time() + seconds
+    next_save = time.time() + 30
+    try:
+        while time.time() < deadline and not reader.finished.is_set():
+            time.sleep(0.5)
+            for stamp, path, kind, action in session.log.take_live():
+                star = "★" if kind == "pos" else " "
+                name = changes.ACTION_NAMES.get(action, "바뀜")
+                print(f"  {datetime.fromtimestamp(stamp):%H:%M:%S} {star} {name:<8} {path}")
+            for stamp in reader.take_marks():
+                recent = session.log.mark(stamp)
+                count = len(session.log.markers)
+                print()
+                print(f"  ----- {datetime.fromtimestamp(stamp):%H:%M:%S}  주문 표시 {count}번째 -----")
+                if recent:
+                    print("  직전에 바뀐 파일:")
+                    for path, kind, _last in recent[:8]:
+                        print(f"    {'★' if kind == 'pos' else ' '} {path}")
+                    if len(recent) > 8:
+                        print(f"      ... 외 {len(recent) - 8}개")
+                else:
+                    print("  직전에 바뀐 파일이 없습니다.")
+                    print("  주문을 넣은 뒤에 엔터를 눌렀는지 확인해 주세요.")
+                print()
+            session.poll()
+            if time.time() >= next_save:
+                next_save += 30
+                try:
+                    session.save(out_path)
+                except OSError:
+                    pass
+    except KeyboardInterrupt:
+        print("\n  중단했습니다.")
+    finally:
+        reader.stop()
+        print("\n  마무리하는 중입니다...")
+        session.finish()
+
+    print("  주문 파일로 보이는 것을 복사해 묶는 중입니다. (몇십 초 걸릴 수 있습니다)")
+    zip_path = out_path.with_suffix(".zip")
+    try:
+        session.pack(zip_path)
+    except (OSError, ValueError) as exc:
+        print(f"  ! 복사해 묶지 못했습니다: {exc}")
+        zip_path = None
+
+    print()
+    print("=" * 66)
+    print("  결과")
+    print("=" * 66)
+    for line in session.console_summary():
+        print(line)
+    print()
+    try:
+        session.save(out_path)
+    except OSError as exc:
+        print(f"  ! 결과 글을 저장하지 못했습니다: {exc}")
+    if zip_path is not None:
+        print(f"  보내주실 파일: {zip_path}")
+        print(f"  결과 글과 복사한 파일 {session.copied_count}개가 함께 들어 있습니다.")
+        print("  ※ 복사본에는 매장 주문 기록이 그대로 들어 있습니다.")
+        print("    믿을 수 있는 곳에만 보내 주세요.")
+    else:
+        print(f"  보내주실 파일: {out_path}")
+
+    if reader.waiting:
+        # 입력을 기다리던 쪽이 이 엔터를 받아 끝나므로, 여기서 따로 기다리지 않는다.
+        print("\n엔터를 누르면 창이 닫힙니다...")
+        reader.join()
+    else:
+        pause()
+    return 0
+
+
 def pause() -> None:
     """더블클릭으로 실행했을 때 창이 즉시 닫혀 내용을 못 보는 일을 막는다.
 
@@ -436,6 +545,10 @@ def main(argv: list[str] | None = None) -> int:
                         metavar="포트", help="가상 프린터가 되어 주문서를 받기 (관리자 권한 불필요)")
     parser.add_argument("--홀", "--hall", dest="hall", action="store_true",
                         help="홀 태블릿 주문서 체크 화면 (관리자 권한 불필요)")
+    parser.add_argument("--변화찾기", "--changes", dest="changes", nargs="?", const="",
+                        metavar="폴더", help="주문이 들어올 때 이 PC 의 어떤 파일이 바뀌는지 찾기")
+    parser.add_argument("--seconds", type=int, default=1800, metavar="초",
+                        help="변화찾기를 몇 초 동안 할지 (기본 1800초 = 30분)")
     args = parser.parse_args(argv)
 
     cfg = config_module.load()
@@ -451,6 +564,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n결과가 저장되었습니다: {path}")
         pause()
         return 0
+
+    if args.changes is not None:
+        return find_changes(cfg, args.changes or None, max(1, args.seconds))
 
     if args.replay:
         return replay(cfg, args.replay)
