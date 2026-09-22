@@ -113,6 +113,8 @@ def write_sample_kitchen_log(folder, now=None):
     from datetime import datetime, timedelta
     from pathlib import Path
 
+    from .menu_store import BUSINESS_DAY_START_HOUR
+
     now = now or datetime.now()
     orders = [
         (30, "홀-2", "0001-0001", "신규", [("43. 오븐 토마토 파스타", 1, [])]),
@@ -121,9 +123,14 @@ def write_sample_kitchen_log(folder, now=None):
                                           ("20. 비프 찹 스테이크", 1, ["순한맛"])]),
         (2, "홀-5", "0003-0002", "추가", [("20. 비프 찹 스테이크", -1, ["순한맛"])]),
     ]
+    # 새벽 5시에 영업일이 바뀐다. 5시 직후라면 앞선 주문이 전날로 넘어가 검색에서 빠지므로 당긴다.
+    day_start = now.replace(hour=BUSINESS_DAY_START_HOUR, minute=0, second=10, microsecond=0)
+    if now.hour < BUSINESS_DAY_START_HOUR:
+        day_start -= timedelta(days=1)
+
     out = bytearray()
     for minutes, table, order_no, kind, items in orders:
-        when = now - timedelta(minutes=minutes)
+        when = max(now - timedelta(minutes=minutes), day_start)
         out += kitchen_log_line(when, "CTransData::SendDataLink", "SendDataLink start - id [1] message [printer]")
         for station in ("홀", "가니"):  # 실제처럼 프린터마다 한 장씩
             out += kitchen_log_entry(kitchen_ticket(table, order_no, items, kind, station, when), when)

@@ -204,3 +204,19 @@ class FindLogFolderTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SampleLogTest(unittest.TestCase):
+    def test_every_ticket_lands_on_todays_business_day(self):
+        """새벽 5시 직후에 만들어도 시험용 주문이 전날로 넘어가면 안 된다."""
+        from what_number.menu_store import business_day
+
+        with tempfile.TemporaryDirectory() as tmp:
+            for hour, minute in ((5, 2), (5, 20), (12, 0), (4, 30)):
+                now = datetime(2026, 9, 22, hour, minute)
+                path = write_sample_kitchen_log(tmp, now=now)
+                seen = []
+                kitchen_log.LogFollower(tmp, seen.append).poll()
+                days = {business_day(t.when) for t in seen}
+                self.assertEqual(days, {business_day(now.timestamp())}, (hour, minute))
+                path.unlink()
