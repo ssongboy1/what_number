@@ -236,66 +236,94 @@ def setup_console() -> None:
             pass
 
 
-def hall(cfg: config_module.Config, demo: bool = False) -> int:
-    """홀 태블릿 화면. 주문서를 체크해 나가는 화면이다."""
-    from .ticket_feed import TicketFeed
-    from .ticket_store import TicketStore
+KITCHEN_LOG_HELP = r"""
+  포스의 주방 기록 파일(kitchenPrinter_trace_날짜.log)을 찾지 못했습니다.
 
-    # 시연용 가짜 주문서가 실제 기록에 섞이면 안 되므로 파일을 따로 쓴다.
-    tickets = TicketStore(":memory:" if demo else cfg.data_dir / "tickets.db")
-    feed = TicketFeed(tickets)
-    dripper = None
+  - 이 프로그램은 VD 포스가 설치된 PC 에서 켜야 합니다.
+  - 기록 파일이 있는 폴더를 알면 이렇게 알려줄 수 있습니다.
+      what_number.exe --log C:\PaLiDa\bin\log
+    또는 config.json 의 "kitchen_log_dir" 에 그 폴더를 적어 두세요.
+"""
 
-    if demo:
-        from . import sample_tickets
 
-        sample_tickets.seed(feed, 12)
-        dripper = sample_tickets.SampleDripper(feed, every_seconds=25.0)
-        dripper.start()
+def watch_kitchen_log(cfg: config_module.Config, folder: str | None = None) -> int:
+    """포스의 주방 인쇄 기록을 읽어 메뉴 검색 화면을 연다. 관리자 권한이 필요 없다."""
+    from .kitchen_log import LogFollower, find_log_folder
+    from .menu_store import MenuStore
+    from .search_web import serve_search
 
-    store = OrderStore(cfg.db_path, retention_hours=cfg.retention_hours)
+    target = Path(folder) if folder else (Path(cfg.kitchen_log_dir) if cfg.kitchen_log_dir else None)
+    if target is None:
+        print("  포스의 주방 기록 파일을 찾는 중입니다...")
+        target = find_log_folder()
+    if target is None or not target.is_dir():
+        if target is not None:
+            print(f"\n  ! 폴더가 없습니다: {target}")
+        print(KITCHEN_LOG_HELP)
+        pause()
+        return 1
+
+    store = MenuStore(cfg.data_dir / "menus.db", retention_hours=cfg.retention_hours)
+    caught_up = threading.Event()
+
+    def on_ticket(ticket) -> None:
+        added = store.add(ticket)
+        if not caught_up.is_set() or not added:
+            return  # 켤 때 오늘 것을 한꺼번에 읽는 동안은 하나하나 찍지 않는다
+        menus = ", ".join(
+            menu + (" 취소" if quantity < 0 else (f" x{quantity}" if quantity > 1 else ""))
+            for menu, quantity in added
+        )
+        print(f"  {datetime.fromtimestamp(ticket.when):%H:%M:%S}  {ticket.table or '?':<6} {menus}")
+
+    follower = LogFollower(target, on_ticket, offsets=store)
+    follower.poll()
+    caught_up.set()
+
     try:
-        httpd, _ = serve(store, cfg.web_port, lambda: {"capturing": False}, tickets=tickets)
+        httpd, _ = serve_search(store, cfg.web_port, follower.status)
     except OSError:
         # 포트를 독점으로 열기 때문에, 이미 켜져 있으면 여기서 걸린다.
         print()
         print(f"  {cfg.web_port} 번을 이미 다른 프로그램이 쓰고 있습니다.")
         print("  이 프로그램이 이미 켜져 있는지 확인해 보세요.")
-        print("  다른 번호로 켜려면:  what_number.exe --hall --port 8711")
-        if dripper is not None:
-            dripper.stop()
-        tickets.close()
         store.close()
         pause()
         return 1
+    follower.start()
 
+    summary = store.summary()
     addresses = local_ipv4_addresses()
     print("=" * 62)
-    print("  홀 주문서 화면")
+    print("  몇번인가요 - 메뉴로 테이블 찾기")
     print("=" * 62)
-    print(f"  이 PC에서 보기 : http://127.0.0.1:{cfg.web_port}/hall")
+    print(f"  이 PC에서 보기  : http://127.0.0.1:{cfg.web_port}")
     for address in addresses:
-        print(f"  태블릿에서 보기: http://{address}:{cfg.web_port}/hall")
-    if demo:
-        print()
-        print("  샘플 모드입니다. 가짜 주문서 12장을 넣었고, 25초마다 한 장씩 더 들어옵니다.")
+        print(f"  폰·태블릿에서   : http://{address}:{cfg.web_port}")
+    print(f"  주방 기록 폴더  : {target}")
+    print(f"  오늘 주문서     : {summary['tickets']}장")
+    for message in follower.errors:
+        print("  ! " + message)
     print("-" * 62)
-    print("  끄려면 이 창을 닫으세요.")
+    print("  포스의 기록을 읽기만 합니다. 이 창을 닫아도 포스에는 영향이 없습니다.")
+    print("  새 주문서가 들어오면 아래에 표시됩니다. 끄려면 이 창을 닫으세요.")
     print()
 
     if cfg.open_browser:
-        webbrowser.open(f"http://127.0.0.1:{cfg.web_port}/hall")
+        webbrowser.open(f"http://127.0.0.1:{cfg.web_port}")
 
+    last_purge = time.time()
     try:
         while True:
             time.sleep(0.5)
+            if time.time() - last_purge > 600:
+                store.purge_old()
+                last_purge = time.time()
     except KeyboardInterrupt:
         pass
     finally:
-        if dripper is not None:
-            dripper.stop()
+        follower.stop()
         httpd.shutdown()
-        tickets.close()
         store.close()
     return 0
 
@@ -543,8 +571,8 @@ def main(argv: list[str] | None = None) -> int:
                         metavar="초", help="모든 포트를 지켜보며 주문서가 어디로 나가는지 찾기")
     parser.add_argument("--수신", "--receive", dest="receive", nargs="?", const=9100, type=int,
                         metavar="포트", help="가상 프린터가 되어 주문서를 받기 (관리자 권한 불필요)")
-    parser.add_argument("--홀", "--hall", dest="hall", action="store_true",
-                        help="홀 태블릿 주문서 체크 화면 (관리자 권한 불필요)")
+    parser.add_argument("--기록", "--log", dest="log", nargs="?", const="", metavar="폴더",
+                        help="포스의 주방 기록을 읽어 메뉴로 테이블 찾기 (옵션 없이 켜도 기록이 있으면 이 방식)")
     parser.add_argument("--변화찾기", "--changes", dest="changes", nargs="?", const="",
                         metavar="폴더", help="주문이 들어올 때 이 PC 의 어떤 파일이 바뀌는지 찾기")
     parser.add_argument("--seconds", type=int, default=1800, metavar="초",
@@ -571,14 +599,22 @@ def main(argv: list[str] | None = None) -> int:
     if args.replay:
         return replay(cfg, args.replay)
 
-    if args.hall:
-        return hall(cfg, demo=args.demo)
-
     if args.demo:
         return demo(cfg)
 
     if args.receive:
         return receive(cfg, args.receive)
+
+    if args.log is not None:
+        return watch_kitchen_log(cfg, args.log or None)
+
+    if not args.scan:
+        # 옵션 없이 켰을 때: 포스의 주방 기록이 있으면 그것을 읽는다. 더블클릭만으로 쓰게 하려고.
+        from .kitchen_log import find_log_folder
+
+        found = cfg.kitchen_log_dir or find_log_folder()
+        if found:
+            return watch_kitchen_log(cfg, str(found))
 
     if not is_admin():
         print(ADMIN_HELP)

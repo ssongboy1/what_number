@@ -74,6 +74,40 @@ jobs:
           if ($out -notmatch "B-0042")        { throw "exe 가 주문번호를 읽지 못했습니다" }
           Write-Host "exe 실행 및 전표 인식 정상"
 
+      # exe 가 포스 주방 기록을 읽고, 메뉴로 테이블을 찾아 주는지 확인한다. 이 매장에서 실제로 쓰는 방식이다.
+      - name: 주방 기록 읽기 확인
+        shell: pwsh
+        run: |
+          [Console]::OutputEncoding = [Text.Encoding]::UTF8
+          $env:PYTHONPATH = "src"
+          $logs = Join-Path $env:RUNNER_TEMP "PaLiDa\log"
+          python -c "import sys; from what_number.demo import write_sample_kitchen_log; write_sample_kitchen_log(sys.argv[1])" $logs
+          New-Item -ItemType File -Force -Path empty.txt | Out-Null
+          $p = Start-Process -FilePath dist\what_number.exe -ArgumentList "--log", $logs, "--no-browser", "--port", "8719" `
+                 -RedirectStandardInput empty.txt -RedirectStandardOutput log_out.txt -PassThru -NoNewWindow
+          $found = $null
+          foreach ($i in 1..30) {
+            Start-Sleep -Seconds 1
+            try {
+              $q = [uri]::EscapeDataString("감바스")
+              $found = Invoke-RestMethod "http://127.0.0.1:8719/api/search?q=$q"
+              if ($found.results) { break }
+            } catch { }
+          }
+          $page = $null; $cancelled = $null
+          try {
+            $page = Invoke-WebRequest "http://127.0.0.1:8719/" -UseBasicParsing
+            $q = [uri]::EscapeDataString("스테이크")
+            $cancelled = Invoke-RestMethod "http://127.0.0.1:8719/api/search?q=$q"
+          } finally {
+            Stop-Process -Id $p.Id -Force
+          }
+          Get-Content log_out.txt -Encoding utf8 | Write-Host
+          if (-not ($found.results | Where-Object { $_.table -eq "홀-1" })) { throw "exe 가 주방 기록에서 테이블을 찾지 못했습니다" }
+          if ($cancelled.results) { throw "취소된 메뉴가 검색에 남아 있습니다" }
+          if ($page.Content -notmatch "몇번인가요") { throw "검색 화면이 열리지 않았습니다" }
+          Write-Host "주방 기록 읽기 정상"
+
       # 변화찾기가 exe 안에서도 윈도우의 파일 변화 통지를 받고, 결과와 복사본 zip 을 남기는지 확인한다.
       - name: 변화찾기 확인
         shell: pwsh

@@ -9,8 +9,6 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-from . import hall_web
-from .hall_page import PAGE as HALL_PAGE
 from .store import OrderStore
 
 PAGE = """<!doctype html>
@@ -193,16 +191,11 @@ setInterval(refresh, 2000);
 class _Handler(BaseHTTPRequestHandler):
     server_version = "WhatNumber"
     store: OrderStore
-    tickets = None  # TicketStore. 홀 화면을 쓸 때만 채워진다
     status_provider = staticmethod(lambda: {})
 
     def do_GET(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
-        if parsed.path in ("/hall", "/hall/", "/홀"):
-            self._send(200, "text/html; charset=utf-8", HALL_PAGE.encode("utf-8"))
-        elif parsed.path.startswith("/api/hall/"):
-            self._hall_get(parsed)
-        elif parsed.path == "/":
+        if parsed.path == "/":
             self._send(200, "text/html; charset=utf-8", PAGE.encode("utf-8"))
         elif parsed.path == "/api/orders":
             self._send_json(self._orders(parse_qs(parsed.query)))
@@ -212,57 +205,6 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(204, "text/plain", b"")
         else:
             self._send(404, "text/plain; charset=utf-8", "없는 주소입니다".encode("utf-8"))
-
-    def do_POST(self) -> None:  # noqa: N802
-        parsed = urlparse(self.path)
-        length = int(self.headers.get("Content-Length") or 0)
-
-        # 몸통을 읽기 전에 크기부터 자른다
-        if length > hall_web.MAX_BODY:
-            self._send_json({"ok": False, "reason": "요청이 너무 큽니다"}, code=413)
-            return
-        raw = self.rfile.read(length) if length else b""
-
-        # 다른 사이트에서 들어온 요청을 막는다.
-        # JSON 형식을 요구하면 브라우저가 사전 확인을 하는데, 우리는 그것을 받지 않는다.
-        content_type = (self.headers.get("Content-Type") or "").split(";")[0].strip().lower()
-        if content_type != "application/json":
-            self._send_json({"ok": False, "reason": "application/json 이어야 합니다"}, code=415)
-            return
-        site = (self.headers.get("Sec-Fetch-Site") or "").strip().lower()
-        if site and site not in ("same-origin", "none"):
-            self._send_json({"ok": False, "reason": "허용되지 않은 요청입니다"}, code=403)
-            return
-        if not hall_web.host_allowed(self.headers.get("Host") or ""):
-            self._send_json({"ok": False, "reason": "허용되지 않은 주소입니다"}, code=403)
-            return
-
-        if self.tickets is None or not parsed.path.startswith("/api/hall/"):
-            self._send_json({"ok": False, "reason": "없는 주소입니다"}, code=404)
-            return
-
-        ok, payload = hall_web.parse_body(raw)
-        if not ok:
-            self._send_json(payload, code=400)
-            return
-        code, result = hall_web.route_post(self.tickets, parsed.path, payload)
-        self._send_json(result, code=code)
-
-    def _hall_get(self, parsed) -> None:
-        if self.tickets is None:
-            self._send_json({"ok": False, "reason": "홀 화면이 켜져 있지 않습니다"}, code=404)
-            return
-        query = parse_qs(parsed.query)
-        if parsed.path == "/api/hall/state":
-            self._send_json(hall_web.state(self.tickets))
-        elif parsed.path == "/api/hall/menus":
-            self._send_json(hall_web.menus(self.tickets))
-        elif parsed.path == "/api/hall/garnish":
-            self._send_json(hall_web.garnish_table())
-        elif parsed.path == "/api/hall/search":
-            self._send_json(hall_web.search(self.tickets, (query.get("menu") or [""])[0]))
-        else:
-            self._send_json({"ok": False, "reason": "없는 주소입니다"}, code=404)
 
     def _orders(self, query: dict) -> dict:
         table = (query.get("table") or [""])[0] or None
@@ -313,11 +255,10 @@ class _ExclusiveHTTPServer(ThreadingHTTPServer):
 
 
 def serve(
-    store: OrderStore, port: int, status_provider, tickets=None
+    store: OrderStore, port: int, status_provider
 ) -> tuple[ThreadingHTTPServer, threading.Thread]:
     handler = type("Handler", (_Handler,), {
         "store": store,
-        "tickets": tickets,
         "status_provider": staticmethod(status_provider),
     })
     httpd = _ExclusiveHTTPServer(("0.0.0.0", port), handler)

@@ -13,3 +13,7 @@ dist/
 *.xlsx
 *.png
 .playwright-mcp/
+
+# 포스 기록 파일. 매장 주문 내용이 들어 있어 올리지 않는다
+*.log
+로그파일/

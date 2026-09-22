@@ -31,6 +31,7 @@ class Config:
     open_browser: bool = True
     keep_raw_dumps: int = 50  # 최근 인쇄 원본을 몇 건까지 보관할지(진단용)
     bind_ips: list[str] = field(default_factory=list)  # 비우면 자동 탐색
+    kitchen_log_dir: str = ""  # 포스 주방 기록 폴더. 비우면 C:\PaLiDa 아래에서 찾는다
     table_patterns: list[str] = field(default_factory=lambda: list(DEFAULT_TABLE_PATTERNS))
     order_no_patterns: list[str] = field(default_factory=lambda: list(DEFAULT_ORDER_NO_PATTERNS))
 
