@@ -65,10 +65,28 @@ class MenuStoreTest(unittest.TestCase):
     def test_recent_marks_partly_cancelled_tickets(self):
         self.store.add(ticket("홀-6", "0008-0001", [("34. 감바스 오일 파스타", 1, []), ("20. 비프 찹 스테이크", 1, [])], minutes_ago=5))
         self.store.add(ticket("홀-6", "0008-0002", [("20. 비프 찹 스테이크", -1, [])], "추가"))
-        recent = self.store.recent(DAY)
-        self.assertEqual([t["order_no"] for t in recent], ["0008-0001"])
-        self.assertEqual([(i["menu"], i["cancelled"]) for i in recent[0]["items"]],
-                         [("감바스 오일 파스타", False), ("비프 찹 스테이크", True)])
+
+        marked = self.store.recent(DAY, cancelled=True)
+        self.assertEqual([t["order_no"] for t in marked], ["0008-0001"])
+        self.assertEqual([(i["menu"], i["cancelled"], i["qty"]) for i in marked[0]["items"]],
+                         [("감바스 오일 파스타", False, 1), ("비프 찹 스테이크", True, 1)])
+
+        hidden = self.store.recent(DAY)  # 취소를 빼고 보면 남은 메뉴만
+        self.assertEqual([(i["menu"], i["cancelled"]) for i in hidden[0]["items"]],
+                         [("감바스 오일 파스타", False)])
+
+    def test_cancelled_orders_come_back_when_asked(self):
+        self.store.add(ticket("홀-4", "0004-0001", [("49. 빠네 크림 파스타", 2, [])], minutes_ago=5))
+        self.store.add(ticket("홀-4", "0004-0002", [("49. 빠네 크림 파스타", -2, [])], "추가"))
+        self.assertEqual(self.tables("빠네"), [])
+        found = self.store.search("빠네", DAY, cancelled=True)
+        self.assertEqual([(r["table"], r["qty"], r["cancelled"]) for r in found], [("홀-4", 2, True)])
+        self.assertEqual([t["order_no"] for t in self.store.recent(DAY)], [])
+        # 취소 전표 자체(0004-0002)는 주문이 아니라 취소 기록이라 목록에 나오지 않는다
+        back = self.store.recent(DAY, cancelled=True)
+        self.assertEqual([t["order_no"] for t in back], ["0004-0001"])
+        self.assertEqual([(i["menu"], i["qty"], i["cancelled"]) for i in back[0]["items"]],
+                         [("빠네 크림 파스타", 2, True)])
 
     def test_partial_cancel(self):
         self.store.add(ticket("홀-5", "0003-0001", [("49. 빠네 크림 파스타", 3, [])], minutes_ago=5))

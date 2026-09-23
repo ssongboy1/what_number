@@ -160,8 +160,12 @@ class MenuStore:
             count -= take
 
     # --- 찾기 ---
-    def search(self, query: str, day: str | None = None, limit: int = 80) -> list:
-        """메뉴 이름 일부로 찾는다. 취소된 것은 빼고, 최근 주문부터."""
+    def search(self, query: str, day: str | None = None, limit: int = 80,
+               cancelled: bool = False) -> list:
+        """메뉴 이름 일부로 찾는다. 최근 주문부터.
+
+        cancelled 가 참이면 취소된 것도 함께 돌려준다(취소 표시를 붙여서).
+        """
         key = normalize(query)
         if not key:
             return []
@@ -170,20 +174,25 @@ class MenuStore:
         if key.isdigit():
             condition = "(" + condition + " OR i.code = ?)"
             params.append(key)
+        left = "" if cancelled else " AND i.quantity > i.cancelled"
         with self._lock:
             rows = self._conn.execute(
                 "SELECT t.table_label, t.order_no, t.kind, t.printed_at, t.stations,"
-                "       i.menu, i.code, i.options, i.quantity - i.cancelled AS qty"
+                "       i.menu, i.code, i.options, i.quantity, i.cancelled,"
+                "       i.quantity - i.cancelled AS qty"
                 " FROM items i JOIN tickets t ON t.id = i.ticket_id"
-                " WHERE t.day = ? AND i.quantity > i.cancelled AND i.quantity > 0 AND " + condition +
+                " WHERE t.day = ? AND i.quantity > 0" + left + " AND " + condition +
                 " ORDER BY t.printed_at DESC, t.id DESC, i.id LIMIT ?",
                 [day or business_day()] + params + [limit],
             ).fetchall()
         return [
             {
                 "table": row["table_label"], "menu": row["menu"], "code": row["code"],
-                "options": row["options"], "qty": row["qty"], "order_no": row["order_no"],
-                "kind": row["kind"], "printed_at": row["printed_at"],
+                "options": row["options"],
+                # 다 취소된 줄은 원래 수량을 그대로 보여주고 취소 표시만 붙인다
+                "qty": row["qty"] if row["qty"] > 0 else row["quantity"],
+                "cancelled": row["qty"] <= 0,
+                "order_no": row["order_no"], "kind": row["kind"], "printed_at": row["printed_at"],
             }
             for row in rows
         ]
@@ -201,13 +210,17 @@ class MenuStore:
             ).fetchall()
         return [{"menu": row["menu"], "count": row["count"], "last": row["last"]} for row in rows]
 
-    def recent(self, day: str | None = None, limit: int = 30) -> list:
-        """최근 주문서. 통째로 취소된 주문서는 빼고, 일부만 취소된 메뉴는 표시해서 돌려준다."""
+    def recent(self, day: str | None = None, limit: int = 30, cancelled: bool = False) -> list:
+        """최근 주문서. 취소된 메뉴는 취소 표시를 달아 함께 돌려준다.
+
+        cancelled 가 거짓이면 통째로 취소된 주문서는 아예 빼고 돌려준다.
+        """
+        keep_all = " AND i.quantity > i.cancelled" if not cancelled else ""
         with self._lock:
             tickets = self._conn.execute(
                 "SELECT t.* FROM tickets t WHERE t.day = ?"
                 " AND EXISTS (SELECT 1 FROM items i WHERE i.ticket_id = t.id"
-                "             AND i.quantity > 0 AND i.quantity > i.cancelled)"
+                "             AND i.quantity > 0" + keep_all + ")"
                 " ORDER BY t.printed_at DESC, t.id DESC LIMIT ?",
                 (day or business_day(), limit),
             ).fetchall()
@@ -218,17 +231,19 @@ class MenuStore:
                     " WHERE ticket_id = ? AND quantity > 0 ORDER BY id",
                     (ticket["id"],),
                 ).fetchall()
+                rows = []
+                for item in items:
+                    left = item["quantity"] - item["cancelled"]
+                    if left <= 0 and not cancelled:
+                        continue
+                    rows.append({
+                        "menu": item["menu"], "options": item["options"],
+                        "qty": left if left > 0 else item["quantity"],
+                        "cancelled": left <= 0,
+                    })
                 result.append({
                     "table": ticket["table_label"], "order_no": ticket["order_no"],
-                    "kind": ticket["kind"], "printed_at": ticket["printed_at"],
-                    "items": [
-                        {
-                            "menu": item["menu"], "options": item["options"],
-                            "qty": item["quantity"] - item["cancelled"],
-                            "cancelled": item["cancelled"] >= item["quantity"],
-                        }
-                        for item in items
-                    ],
+                    "kind": ticket["kind"], "printed_at": ticket["printed_at"], "items": rows,
                 })
         return result
 

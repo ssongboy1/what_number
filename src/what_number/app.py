@@ -246,6 +246,33 @@ KITCHEN_LOG_HELP = r"""
 """
 
 
+def _console_window():
+    """이 프로그램이 쓰는 검은 창. 없으면 None.
+
+    더블클릭으로 켜면 윈도우가 이 프로그램만을 위해 검은 창을 하나 만들어 준다.
+    반대로 사용자가 명령창에서 실행했다면 그 창은 사용자 것이라 건드리면 안 된다.
+    """
+    if os.name != "nt":
+        return None
+    try:
+        window = ctypes.windll.kernel32.GetConsoleWindow()
+        if not window:
+            return None
+        users = (ctypes.c_uint * 8)()
+        if ctypes.windll.kernel32.GetConsoleProcessList(users, 8) != 1:
+            return None  # 명령창도 같이 쓰는 창이다
+        return window
+    except Exception:
+        return None
+
+
+def _show_console(window, visible: bool) -> None:
+    try:
+        ctypes.windll.user32.ShowWindow(window, 5 if visible else 0)  # 5=보이기, 0=숨기기
+    except Exception:
+        pass
+
+
 def watch_kitchen_log(cfg: config_module.Config, folder: str | None = None,
                       use_gui: bool = True, use_web: bool = False) -> int:
     """포스의 주방 인쇄 기록을 읽어 메뉴 검색 창을 연다. 관리자 권한이 필요 없다.
@@ -349,14 +376,22 @@ def watch_kitchen_log(cfg: config_module.Config, folder: str | None = None,
 
     stopping = threading.Event()
     threading.Thread(target=housekeeping, name="housekeeping", daemon=True).start()
+    console = _console_window() if window is not None else None
     try:
         if window is not None:
+            # 창이 떴으면 검은 창은 숨긴다. 볼 일이 없고, 실수로 닫으면 프로그램이 꺼진다.
+            if console is not None:
+                _show_console(console, False)
             window.run()  # 창을 닫으면 여기서 빠져나온다
         else:
             while True:
                 time.sleep(0.5)
     except KeyboardInterrupt:
         pass
+    except Exception:
+        if console is not None:
+            _show_console(console, True)  # 무슨 일이 났는지는 보여야 한다
+        raise
     finally:
         stopping.set()
         follower.stop()

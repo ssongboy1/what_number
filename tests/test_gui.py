@@ -115,6 +115,51 @@ class WindowTest(unittest.TestCase):
         self.window.root.update()
         self.assertIn("주문한 테이블이 없습니다", self.shown())
 
+    def test_table_number_has_its_own_column(self):
+        """메뉴가 여러 개여도 줄 앞이 가지런해야 한다. 테이블 번호 뒤에 탭을 둔다."""
+        self.store.add(ticket("홀-9", "0009-0001", [
+            ("34. 감바스 오일 파스타", 1, []), ("49. 빠네 크림 파스타", 1, [])]))
+        self.window._redraw()
+        self.window.root.update()
+        lines = [line for line in self.shown().splitlines() if line.strip()]
+        row = next(line for line in lines if line.startswith("홀-9"))
+        self.assertTrue(row.startswith("홀-9\t"), row)
+        following = lines[lines.index(row) + 1]
+        self.assertTrue(following.startswith("\t"), following)
+
+    def test_cancelled_menu_is_shown_with_a_line_through_it(self):
+        self.store.add(ticket("홀-7", "0010-0001", [("20. 비프 찹 스테이크", 1, [])], minutes_ago=5))
+        self.store.add(ticket("홀-7", "0010-0002", [("20. 비프 찹 스테이크", -1, [])], "추가"))
+        self.window._redraw()
+        self.window.root.update()
+        self.assertIn("비프 찹 스테이크", self.shown())
+        marked = self.window.view.tag_ranges("cancelled")
+        self.assertTrue(marked, "취소된 메뉴에 취소선 표시가 없습니다")
+        self.assertTrue(self.window.view.tag_cget("cancelled", "font").endswith("overstrike"))
+
+    def test_cancelled_menu_can_be_hidden(self):
+        self.store.add(ticket("홀-7", "0010-0001", [("20. 비프 찹 스테이크", 1, [])], minutes_ago=5))
+        self.store.add(ticket("홀-7", "0010-0002", [("20. 비프 찹 스테이크", -1, [])], "추가"))
+        self.window.show_cancelled.set(False)
+        self.window._redraw()
+        self.window.root.update()
+        self.assertNotIn("비프 찹 스테이크", self.shown())
+
+    def test_typing_waits_a_moment_before_redrawing(self):
+        """한글을 조합하는 중에 화면이 흔들리지 않도록 잠깐 기다린다."""
+        self.window.set_query("")
+        self.window.text_var.set("감바")
+        self.assertIsNotNone(self.window._typing_job)
+        self.assertIn("최근 주문", self.shown())  # 아직 다시 그리지 않았다
+        self.window._redraw()
+        self.assertIn("'감바' 주문한 테이블", self.shown())
+
+    def test_nothing_is_redrawn_when_nothing_changed(self):
+        self.window.render(force=True)
+        first = self.window._view_key
+        self.window.render()
+        self.assertEqual(self.window._view_key, first)
+
     def test_status_shows_a_problem(self):
         self.window.status_provider = lambda: {"ok": False, "errors": ["기록 파일을 읽지 못했습니다"]}
         self.window.refresh()

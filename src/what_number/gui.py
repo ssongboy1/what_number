@@ -23,6 +23,8 @@ BAD = "#f87171"
 FAMILY = "맑은 고딕"
 REFRESH_MS = 2000
 MAX_CHIPS = 12
+TABLE_COLUMN = "104p"  # 테이블 번호 칸의 너비
+TYPING_MS = 120  # 글자를 친 뒤 목록을 다시 그리기까지 기다리는 시간
 
 
 def elapsed(printed_at: float, now: float | None = None) -> str:
@@ -107,6 +109,9 @@ class SearchWindow:
         self.note = note
         self.query = ""
         self._chip_buttons = []
+        self._chips_key = None
+        self._view_key = None
+        self._typing_job = None
 
         self.root = tk.Tk()
         self.root.title("몇번인가요 - 메뉴로 테이블 찾기")
@@ -159,8 +164,17 @@ class SearchWindow:
         tk.Button(box, text="지우기", command=lambda: self.set_query(""), bg=CARD, fg=MUTED,
                   font=(FAMILY, 11, "bold"), relief="flat", activebackground=LINE,
                   activeforeground=TEXT, cursor="hand2").pack(side="left", padx=(8, 0), ipadx=10, ipady=8)
-        tk.Label(self.root, text="메뉴 이름 일부를 치거나, 아래 버튼을 누르세요",
-                 bg=BACKGROUND, fg=MUTED, font=(FAMILY, 9)).pack(anchor="w", padx=18, pady=(4, 0))
+
+        under = tk.Frame(self.root, bg=BACKGROUND)
+        under.pack(fill="x", padx=18, pady=(4, 0))
+        tk.Label(under, text="메뉴 이름 일부를 치거나, 아래 버튼을 누르세요",
+                 bg=BACKGROUND, fg=MUTED, font=(FAMILY, 9)).pack(side="left")
+        self.show_cancelled = tk.BooleanVar(value=True)
+        tk.Checkbutton(
+            under, text="취소 포함", variable=self.show_cancelled, command=self._redraw,
+            bg=BACKGROUND, fg=MUTED, font=(FAMILY, 9), selectcolor=CARD, activebackground=BACKGROUND,
+            activeforeground=TEXT, highlightthickness=0, borderwidth=0, cursor="hand2",
+        ).pack(side="right")
 
     def _build_chips(self, tk) -> None:
         self.chips = tk.Frame(self.root, bg=BACKGROUND)
@@ -179,12 +193,15 @@ class SearchWindow:
         bar.pack(side="right", fill="y")
         self.view.pack(side="left", fill="both", expand=True)
 
+        # 테이블 번호 자리를 고정해 둔다. 메뉴가 여러 개여도 줄 앞이 가지런하도록.
+        self.view.tag_configure("row", tabs=(TABLE_COLUMN,), lmargin2=TABLE_COLUMN)
         self.view.tag_configure("title", foreground=MUTED, font=(FAMILY, 10), spacing3=8)
-        self.view.tag_configure("table", foreground=TEXT, font=(FAMILY, 22, "bold"))
-        self.view.tag_configure("table_fresh", foreground=ACCENT, font=(FAMILY, 22, "bold"))
+        self.view.tag_configure("table", foreground=TEXT, font=(FAMILY, 20, "bold"))
+        self.view.tag_configure("table_fresh", foreground=ACCENT, font=(FAMILY, 20, "bold"))
         self.view.tag_configure("menu", foreground=TEXT, font=(FAMILY, 13, "bold"))
+        self.view.tag_configure("cancelled", foreground=MUTED, font=(FAMILY, 13, "bold", "overstrike"))
         self.view.tag_configure("note", foreground=MUTED, font=(FAMILY, 10))
-        self.view.tag_configure("when", foreground=MUTED, font=(FAMILY, 10), spacing3=10)
+        self.view.tag_configure("when", foreground=MUTED, font=(FAMILY, 10), spacing3=12)
         self.view.tag_configure("empty", foreground=MUTED, font=(FAMILY, 11), spacing1=20)
 
     def _build_foot(self, tk) -> None:
@@ -196,13 +213,29 @@ class SearchWindow:
 
     # --- 동작 ---
     def _typed(self) -> None:
+        """글자를 칠 때마다 부른다.
+
+        바로 다시 그리면 한글을 조합하는 중에 화면이 흔들려 글자가 밀린다.
+        잠깐 기다렸다가, 더 치지 않으면 그때 그린다.
+        """
         self.query = self.text_var.get().strip()
-        self.render()
+        if self._typing_job is not None:
+            self.root.after_cancel(self._typing_job)
+        self._typing_job = self.root.after(TYPING_MS, self._redraw)
+
+    def _redraw(self) -> None:
+        self._typing_job = None
+        self.render_chips(force=True)
+        self.render(force=True)
 
     def set_query(self, text: str) -> None:
+        """버튼이나 지우기로 검색어를 정한다. 직접 친 것이 아니므로 곧바로 그린다."""
         self.text_var.set(text)
         self.entry.icursor("end")
         self.entry.focus_set()
+        if self._typing_job is not None:
+            self.root.after_cancel(self._typing_job)
+        self._redraw()
 
     def _chip_clicked(self, menu: str):
         def clicked() -> None:
@@ -214,10 +247,14 @@ class SearchWindow:
 
         return bool(self.query) and normalize(menu) == normalize(self.query)
 
-    def render_chips(self) -> None:
+    def render_chips(self, force: bool = False) -> None:
         import tkinter as tk
 
         menus = self.store.menus()[:MAX_CHIPS]
+        key = (tuple((item["menu"], item["count"]) for item in menus), self.query)
+        if not force and key == self._chips_key:
+            return  # 바뀐 것이 없으면 그대로 둔다. 다시 만들면 입력이 흔들린다
+        self._chips_key = key
         for button in self._chip_buttons:
             button.destroy()
         self._chip_buttons = []
@@ -235,40 +272,52 @@ class SearchWindow:
         self.chips.grid_columnconfigure(0, weight=1)
         self.chips.grid_columnconfigure(1, weight=1)
 
-    def render(self) -> None:
+    def _write(self, text: str, *tags) -> None:
+        self.view.insert("end", text, ("row",) + tags)
+
+    def _write_head(self, table: str, fresh: bool) -> None:
+        """줄 맨 앞의 테이블 번호. 뒤 내용은 늘 같은 자리에서 시작한다."""
+        self._write(table + "\t", "table_fresh" if fresh else "table")
+
+    def render(self, force: bool = False) -> None:
         now = time.time()
+        summary = self.store.summary()
+        cancelled = bool(self.show_cancelled.get())
+        key = (self.query, cancelled, summary.get("tickets"), summary.get("last_ticket_at"),
+               int(now // 30))
+        if not force and key == self._view_key:
+            return  # 바뀐 것이 없으면 다시 그리지 않는다
+        self._view_key = key
+
         self.view.configure(state="normal")
         self.view.delete("1.0", "end")
         if self.query:
-            found = self.store.search(self.query)
-            self.view.insert("end", f"'{self.query}' 주문한 테이블 {len(found)}곳\n", "title")
+            found = self.store.search(self.query, cancelled=cancelled)
+            self._write(f"'{self.query}' 주문한 테이블 {len(found)}곳\n", "title")
             if not found:
-                self.view.insert(
-                    "end", "오늘 이 메뉴를 주문한 테이블이 없습니다.\n취소된 주문은 보이지 않습니다.\n", "empty")
+                self._write("오늘 이 메뉴를 주문한 테이블이 없습니다.\n", "empty")
             for row in found:
                 table, menu, note, when = result_line(row, now)
-                fresh = now - row.get("printed_at", 0) <= 20 * 60
-                self.view.insert("end", table + "  ", "table_fresh" if fresh else "table")
-                self.view.insert("end", menu + "\n", "menu")
+                self._write_head(table, now - row.get("printed_at", 0) <= 20 * 60)
+                self._write(menu + "\n", "cancelled" if row.get("cancelled") else "menu")
                 if note:
-                    self.view.insert("end", "      " + note + "\n", "note")
-                self.view.insert("end", "      " + when + "\n", "when")
+                    self._write("\t" + note + "\n", "note")
+                self._write("\t" + when + "\n", "when")
         else:
-            recent = self.store.recent(limit=30)
-            self.view.insert("end", "최근 주문\n", "title")
+            recent = self.store.recent(limit=30, cancelled=cancelled)
+            self._write("최근 주문\n", "title")
             if not recent:
-                self.view.insert("end", "오늘 들어온 주방 주문서가 아직 없습니다.\n", "empty")
+                self._write("오늘 들어온 주방 주문서가 아직 없습니다.\n", "empty")
             for ticket in recent:
-                fresh = now - ticket.get("printed_at", 0) <= 20 * 60
-                self.view.insert("end", (ticket.get("table") or "?") + "  ",
-                                 "table_fresh" if fresh else "table")
-                lines = ticket_lines(ticket)
-                self.view.insert("end", (lines[0] if lines else "") + "\n", "menu")
-                for extra in lines[1:]:
-                    self.view.insert("end", "      " + extra + "\n", "menu")
-                self.view.insert(
-                    "end",
-                    "      " + elapsed(ticket.get("printed_at", 0), now)
+                self._write_head(ticket.get("table") or "?",
+                                 now - ticket.get("printed_at", 0) <= 20 * 60)
+                items = ticket.get("items") or [{}]
+                for index, item in enumerate(items):
+                    line = ticket_lines({"items": [item]})
+                    self._write(("" if index == 0 else "\t") + (line[0] if line else "") + "\n",
+                                "cancelled" if item.get("cancelled") else "menu")
+                self._write(
+                    "\t" + elapsed(ticket.get("printed_at", 0), now)
                     + "   " + clock(ticket.get("printed_at", 0)) + "\n",
                     "when",
                 )

@@ -104,7 +104,7 @@ src/what_number/
 ## 개발
 
 ```bash
-PYTHONPATH=src python -m unittest discover -s tests   # 테스트 (현재 234건)
+PYTHONPATH=src python -m unittest discover -s tests   # 테스트 (현재 242건)
 PYTHONPATH=src python -m what_number --demo           # 포스 없이 화면 확인
 PYTHONPATH=src python -m what_number --replay 파일.bin  # 인쇄 원본으로 인식 시험
 PYTHONPATH=src python -m what_number --diagnose       # 이 PC 의 프린터 연결 방식 조사
@@ -196,6 +196,17 @@ exe 는 `.github/workflows/build-exe.yml` 이 윈도우에서 자동으로 만�
 - 사용자가 "창 하나면 웹은 필요 없다" 고 해서 **기본은 창(gui.py)** 으로 바꿨다.
   웹은 `--web` 일 때만 켠다. 그러면 방화벽 창도 안 뜨고 포트도 쓰지 않는다
 - 창은 저장소를 직접 본다(HTTP 를 거치지 않는다). 2초마다 새로 그린다
+
+**2026-09-23 매장 포스 PC 에서 첫 실행 성공.** 기록 폴더는 **`C:\PaLiDa\logs`** 이고
+`find_log_folder()` 가 알아서 찾았다. 실제 주문(비프 찹 스테이크·더블 포크 스테이크·까르보나라
+리조또, 홀-3/홀-1)이 창에 떴다. 사용자가 그 자리에서 지적한 것들을 고쳤다.
+- 한글을 칠 때 글자가 밀렸다 -> 2초마다 화면을 통째로 다시 그리던 것을 멈췄다.
+  바뀐 것이 없으면 그리지 않고(`_view_key`, `_chips_key`), 글자를 친 뒤에는 0.12초 기다린다
+- 메뉴가 여러 개인 주문서는 줄마다 앞이 달랐다 -> 테이블 번호 칸을 탭으로 고정(`TABLE_COLUMN`)
+- 취소된 메뉴가 그냥 사라졌다 -> 취소선(overstrike)으로 보여주고 `취소 포함` 토글로 끌 수 있게 했다.
+  `MenuStore.search/recent` 에 `cancelled` 인자를 더했다
+- 검은 창이 같이 뜨는 것이 불편하다 -> 더블클릭으로 켰을 때만 숨긴다(`_console_window`).
+  명령창에서 직접 실행했으면 사용자 창이므로 그대로 둔다
 
 **아직 확인 안 된 것**
 - 매장 포스 PC 에서 로그 폴더의 정확한 위치. 자동으로 찾게 했지만 실물로 확인할 것
