@@ -93,6 +93,20 @@ class MenuStoreTest(unittest.TestCase):
         self.store.add(ticket("홀-5", "0003-0002", [("49. 빠네 크림 파스타", -1, [])], "추가"))
         self.assertEqual(self.tables("빠네"), [("홀-5", "빠네 크림 파스타", 2)])
 
+    def test_partial_cancel_shows_the_cancelled_one_separately(self):
+        """3개 중 1개만 취소하면 남은 2개와 취소된 1개를 따로 보여준다."""
+        self.store.add(ticket("홀-5", "0003-0001", [("49. 빠네 크림 파스타", 3, [])], minutes_ago=5))
+        self.store.add(ticket("홀-5", "0003-0002", [("49. 빠네 크림 파스타", -1, [])], "추가"))
+
+        found = self.store.search("빠네", DAY, cancelled=True)
+        self.assertEqual([(r["qty"], r["cancelled"]) for r in found], [(2, False), (1, True)])
+
+        items = self.store.recent(DAY, cancelled=True)[0]["items"]
+        self.assertEqual([(i["qty"], i["cancelled"]) for i in items], [(2, False), (1, True)])
+
+        hidden = self.store.recent(DAY)[0]["items"]  # 취소를 감추면 남은 것만
+        self.assertEqual([(i["qty"], i["cancelled"]) for i in hidden], [(2, False)])
+
     def test_cancel_does_not_touch_other_tables(self):
         self.store.add(ticket("홀-1", "0001-0001", [("34. 감바스 오일 파스타", 1, [])], minutes_ago=5))
         self.store.add(ticket("홀-2", "0002-0001", [("34. 감바스 오일 파스타", 1, [])], minutes_ago=4))

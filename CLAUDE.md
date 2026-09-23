@@ -104,7 +104,7 @@ src/what_number/
 ## 개발
 
 ```bash
-PYTHONPATH=src python -m unittest discover -s tests   # 테스트 (현재 242건)
+PYTHONPATH=src python -m unittest discover -s tests   # 테스트 (현재 243건)
 PYTHONPATH=src python -m what_number --demo           # 포스 없이 화면 확인
 PYTHONPATH=src python -m what_number --replay 파일.bin  # 인쇄 원본으로 인식 시험
 PYTHONPATH=src python -m what_number --diagnose       # 이 PC 의 프린터 연결 방식 조사
@@ -205,6 +205,8 @@ exe 는 `.github/workflows/build-exe.yml` 이 윈도우에서 자동으로 만�
 - 메뉴가 여러 개인 주문서는 줄마다 앞이 달랐다 -> 테이블 번호 칸을 탭으로 고정(`TABLE_COLUMN`)
 - 취소된 메뉴가 그냥 사라졌다 -> 취소선(overstrike)으로 보여주고 `취소 포함` 토글로 끌 수 있게 했다.
   `MenuStore.search/recent` 에 `cancelled` 인자를 더했다
+- 수량 일부만 취소한 경우(3개 중 1개)는 남은 2개와 취소된 1개를 **두 줄로 나눠** 보여준다
+  (`menu_store._split`). 취소를 감출 때는 남은 것만 한 줄로 보여준다
 - 검은 창이 같이 뜨는 것이 불편하다 -> 더블클릭으로 켰을 때만 숨긴다(`_console_window`).
   명령창에서 직접 실행했으면 사용자 창이므로 그대로 둔다
 

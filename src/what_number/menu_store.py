@@ -69,6 +69,22 @@ def _like(text: str) -> str:
     return "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
 
 
+def _split(quantity: int, cancelled: int, show_cancelled: bool) -> list:
+    """한 줄을 화면에 어떻게 보여줄지. [(수량, 취소인지)]
+
+    3개 중 1개만 취소했다면 남은 2개와 취소된 1개를 따로 보여준다. 그래야
+    '시켰다가 하나 뺐구나' 를 알 수 있다. 취소를 감출 때는 남은 것만 보여준다.
+    """
+    left = quantity - cancelled
+    if not show_cancelled:
+        return [(left, False)] if left > 0 else []
+    if cancelled <= 0:
+        return [(quantity, False)]
+    if left <= 0:
+        return [(quantity, True)]
+    return [(left, False), (cancelled, True)]
+
+
 class MenuStore:
     def __init__(self, path, retention_hours: float = 48.0):
         self.path = str(path)
@@ -185,17 +201,19 @@ class MenuStore:
                 " ORDER BY t.printed_at DESC, t.id DESC, i.id LIMIT ?",
                 [day or business_day()] + params + [limit],
             ).fetchall()
-        return [
-            {
+        found = []
+        for row in rows:
+            base = {
                 "table": row["table_label"], "menu": row["menu"], "code": row["code"],
-                "options": row["options"],
-                # 다 취소된 줄은 원래 수량을 그대로 보여주고 취소 표시만 붙인다
-                "qty": row["qty"] if row["qty"] > 0 else row["quantity"],
-                "cancelled": row["qty"] <= 0,
-                "order_no": row["order_no"], "kind": row["kind"], "printed_at": row["printed_at"],
+                "options": row["options"], "order_no": row["order_no"],
+                "kind": row["kind"], "printed_at": row["printed_at"],
             }
-            for row in rows
-        ]
+            for quantity, is_cancelled in _split(row["quantity"], row["cancelled"], cancelled):
+                line = dict(base)
+                line["qty"] = quantity
+                line["cancelled"] = is_cancelled
+                found.append(line)
+        return found
 
     def menus(self, day: str | None = None) -> list:
         """오늘 주문된 메뉴. 최근에 들어온 것부터."""
@@ -233,14 +251,11 @@ class MenuStore:
                 ).fetchall()
                 rows = []
                 for item in items:
-                    left = item["quantity"] - item["cancelled"]
-                    if left <= 0 and not cancelled:
-                        continue
-                    rows.append({
-                        "menu": item["menu"], "options": item["options"],
-                        "qty": left if left > 0 else item["quantity"],
-                        "cancelled": left <= 0,
-                    })
+                    for quantity, is_cancelled in _split(item["quantity"], item["cancelled"], cancelled):
+                        rows.append({
+                            "menu": item["menu"], "options": item["options"],
+                            "qty": quantity, "cancelled": is_cancelled,
+                        })
                 result.append({
                     "table": ticket["table_label"], "order_no": ticket["order_no"],
                     "kind": ticket["kind"], "printed_at": ticket["printed_at"], "items": rows,
