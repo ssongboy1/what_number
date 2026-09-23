@@ -51,6 +51,35 @@ class ParseTicketTest(unittest.TestCase):
                          [("빠네 크림 파스타", -1), ("비프 찹 스테이크", -1)])
         self.assertTrue(all(l.cancelled for l in found.lines))
 
+    def test_names_cut_at_a_space_keep_the_space(self):
+        """메뉴명 칸(20칸)이 띄어쓰기 자리에서 끝나면 그 공백이 사라지기 쉽다.
+
+        실제 매장 메뉴 283종으로 확인해 찾은 문제다. 세 가지 경우가 모두 나온다.
+        """
+        cases = [
+            "43. 오븐 토마토 파스타",        # 글자 중간에서 잘림
+            "(배달)베이컨 토마토 파스타",     # 띄어쓰기가 앞줄 끝에 딱 들어감
+            "★31. 갈릭 로스트 치킨 스테이크",  # 띄어쓰기 자리에서 줄이 바뀜
+            "카페라떼 [스페셜 티 원두]",
+            "(HOT) 아메리카노 [스페셜티 원두]",
+        ]
+        for name in cases:
+            found = ticket("홀 1", "0001-0001", [(name, 1, [])], when=WHEN)
+            line = found.lines[0]
+            read = (line.code + ". " + line.menu) if line.code else line.menu
+            self.assertEqual(read, name)
+
+    def test_options_cut_at_a_space_keep_the_space(self):
+        option = "★모짜렐라 샐러드 레몬 요거트"
+        found = ticket("홀 1", "0001-0001", [("20. 비프 찹 스테이크", 1, [option])], when=WHEN)
+        self.assertEqual(found.lines[0].options, [option])
+
+    def test_table_names_with_spaces(self):
+        """매장에 따라 '홀 17', '배달 배민원1' 처럼 띄어쓰기로 적힌다."""
+        for table in ("홀 17", "2층 28", "배달 배민원1", "포장 3"):
+            found = ticket(table, "0001-0001", [("34. 감바스 오일 파스타", 1, [])], when=WHEN)
+            self.assertEqual(found.table, table)
+
     def test_names_without_numbers(self):
         found = ticket("포장-3", "0010-0001", [("콜라 500", 2, [])], when=WHEN)
         self.assertEqual((found.lines[0].menu, found.lines[0].quantity, found.lines[0].code), ("콜라 500", 2, ""))

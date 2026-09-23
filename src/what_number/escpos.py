@@ -142,10 +142,11 @@ def decode_text(raw: bytes, encoding: str | None = None) -> tuple[str, str]:
 
 
 class _Parser:
-    def __init__(self, data: bytes, encoding: str | None):
+    def __init__(self, data: bytes, encoding: str | None, keep_spaces: bool = False):
         self.data = data
         self.pos = 0
         self.encoding = encoding
+        self.keep_spaces = keep_spaces
         self.text_buf = bytearray()
         self.out: list[str] = []
         self.receipt = Receipt()
@@ -167,7 +168,7 @@ class _Parser:
         if enc and not self.used_encoding:
             self.used_encoding = enc
         self.text_buf.clear()
-        self.out.append(text.rstrip())
+        self.out.append(text if self.keep_spaces else text.rstrip())
 
     def parse(self) -> Receipt:
         data = self.data
@@ -337,6 +338,10 @@ def _prefix_name(prefix: int) -> str:
     return {ESC: "ESC", GS: "GS", FS: "FS"}.get(prefix, hex(prefix))
 
 
-def parse(data: bytes, encoding: str | None = None) -> Receipt:
-    """인쇄 바이트 한 뭉치를 전표로 해석한다."""
-    return _Parser(data, encoding).parse()
+def parse(data: bytes, encoding: str | None = None, keep_spaces: bool = False) -> Receipt:
+    """인쇄 바이트 한 뭉치를 전표로 해석한다.
+
+    keep_spaces 는 줄 끝 공백을 남긴다. 주방 기록에서는 그 공백이 메뉴명이
+    띄어쓰기 자리에서 잘렸다는 단서라 필요하다.
+    """
+    return _Parser(data, encoding, keep_spaces).parse()

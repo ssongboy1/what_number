@@ -96,6 +96,34 @@ def _parse_time(text: str, pattern: str):
         return None
 
 
+NAME_COLUMN = 20  # 주문서의 메뉴명 칸 너비(인쇄 칸 수)
+
+
+def _width(text: str) -> int:
+    """인쇄 폭. 한글과 기호는 두 칸을 차지한다."""
+    return sum(2 if ord(char) > 0x7F else 1 for char in text)
+
+
+def join_name(head: str, tail: str, spaced: bool = False) -> str:
+    """줄이 바뀌며 잘린 메뉴명을 잇는다.
+
+    포스는 메뉴명 칸(20칸)을 글자 단위로 채우다가 다음 글자가 들어가지 않으면 줄을
+    바꾼다(실측: '오븐 토마토 파스' + '타'). 그래서 그냥 이어 붙이면 되지만,
+    잘린 자리가 띄어쓰기였다면 그 공백을 되살려야 한다.
+    '갈릭 로스트' + '치킨' 을 '갈릭 로스트치킨' 으로 붙이면 안 된다.
+
+    spaced 는 다음 줄이 공백으로 시작했다는 뜻이다(잘린 자리가 띄어쓰기였다).
+    그렇지 않더라도 앞줄에 다음 글자가 들어갈 자리가 남아 있었다면 띄어쓰기였다고 본다.
+    """
+    if not head or not tail:
+        return head or tail  # 끝 공백은 그대로 둔다. 다음 조각을 붙일 때 단서가 된다
+    if head.endswith(" ") or tail.startswith(" "):
+        return head + tail  # 띄어쓰기가 줄 끝이나 줄 앞에 그대로 남아 있다
+    if spaced or _width(head) + _width(tail[0]) <= NAME_COLUMN:
+        return head + " " + tail
+    return head + tail
+
+
 def _items(rows: list) -> list:
     """메뉴 칸의 줄들을 메뉴 단위로 묶는다."""
     start = next((i for i, row in enumerate(rows) if "수량" in row and "메" in row), None)
@@ -113,11 +141,13 @@ def _items(rows: list) -> list:
             break
         if not text or _DIVIDER.match(text):
             continue
+        # 줄 앞뒤의 공백은 버리지 않는다. 메뉴명이 띄어쓰기 자리에서 잘렸다는 표시다.
+        spaced = row[:1].isspace()
         found = _ITEM.match(text)
         if found is None:
-            pending += text
+            pending = join_name(pending, row.lstrip(), spaced)
             continue
-        name = (pending + found.group("name")).strip()
+        name = join_name(pending, found.group("name").strip(), spaced).strip()
         pending = ""
         quantity = int(found.group("qty"))
         if name.startswith("▶"):
@@ -135,8 +165,8 @@ def _items(rows: list) -> list:
 
 def parse_ticket(content: bytes, logged_at: float | None = None) -> KitchenTicket | None:
     """주문서 원본 바이트를 해석한다. 주문서가 아니면 None."""
-    receipt = escpos.parse(content, ENCODING)
-    rows = [row.rstrip() for row in receipt.lines]
+    receipt = escpos.parse(content, ENCODING, keep_spaces=True)
+    rows = list(receipt.lines)  # 줄 끝 공백도 메뉴명을 잇는 단서라 그대로 둔다
     texts = [row.strip() for row in rows if row.strip()]
     if not texts:
         return None
