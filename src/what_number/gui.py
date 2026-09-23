@@ -100,7 +100,7 @@ def available() -> bool:
 class SearchWindow:
     """메뉴를 치면 그 메뉴를 주문한 테이블을 보여주는 창."""
 
-    def __init__(self, store, status_provider=lambda: {}, note: str = ""):
+    def __init__(self, store, status_provider=lambda: {}, note: str = "", title: str = ""):
         import tkinter as tk
 
         self.store = store
@@ -112,8 +112,9 @@ class SearchWindow:
         self._view_key = None
         self._typing_job = None
 
+        self.title = title or "몇번인가요"
         self.root = tk.Tk()
-        self.root.title("몇번인가요 - 메뉴로 테이블 찾기")
+        self.root.title(self.title + " - 메뉴로 테이블 찾기")
         self.root.configure(bg=BACKGROUND)
         self.root.geometry("560x780")
         self.root.minsize(420, 480)
@@ -141,7 +142,7 @@ class SearchWindow:
     def _build_head(self, tk) -> None:
         head = tk.Frame(self.root, bg=BACKGROUND)
         head.pack(fill="x", padx=16, pady=(14, 0))
-        tk.Label(head, text="몇번인가요", bg=BACKGROUND, fg=TEXT,
+        tk.Label(head, text=self.title, bg=BACKGROUND, fg=TEXT,
                  font=(FAMILY, 16, "bold")).pack(side="left")
         self.dot = tk.Frame(head, bg=FRESH, width=10, height=10)
         self.dot.pack(side="right", padx=(8, 0), pady=6)

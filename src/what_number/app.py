@@ -191,33 +191,6 @@ def replay(cfg: config_module.Config, paths: list[str]) -> int:
     return 0
 
 
-def demo(cfg: config_module.Config, count: int = 8) -> int:
-    """포스 없이 가짜 주문을 넣어 화면이 제대로 뜨는지 확인한다."""
-    from .demo import random_receipt
-
-    cfg.keep_raw_dumps = 0
-    app = Application(cfg, store=OrderStore(":memory:", dedup_window=cfg.dedup_window_seconds))
-    for i in range(count):
-        app.feed(random_receipt(i + 1), printer_ip="192.168.0.50")
-    app._httpd, _ = serve(app.store, cfg.web_port, app.status)
-    threading.Thread(target=app._maintenance, daemon=True).start()
-    print()
-    print("  시연 모드입니다. 가짜 주문 %d건을 넣었습니다." % count)
-    print(f"  화면 주소: http://127.0.0.1:{cfg.web_port}")
-    print("  끄려면 이 창을 닫으세요.")
-    print()
-    if cfg.open_browser:
-        webbrowser.open(f"http://127.0.0.1:{cfg.web_port}")
-    try:
-        while True:
-            time.sleep(0.5)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        app.shutdown()
-    return 0
-
-
 def setup_console() -> None:
     """콘솔이 한글을 출력하다 죽지 않게 맞춘다.
 
@@ -241,8 +214,10 @@ KITCHEN_LOG_HELP = r"""
 
   - 이 프로그램은 VD 포스가 설치된 PC 에서 켜야 합니다.
   - 기록 파일이 있는 폴더를 알면 이렇게 알려줄 수 있습니다.
-      what_number.exe --log C:\PaLiDa\bin\log
+      what_number.exe --log C:\PaLiDa\logs
     또는 config.json 의 "kitchen_log_dir" 에 그 폴더를 적어 두세요.
+  - 포스가 없는 PC 에서 화면만 보려면 가짜 주문으로 시험할 수 있습니다.
+      what_number.exe --demo
 """
 
 
@@ -273,8 +248,44 @@ def _show_console(window, visible: bool) -> None:
         pass
 
 
+def demo_window(cfg: config_module.Config, use_gui: bool = True, use_web: bool = False) -> int:
+    """포스 없이 시험해 보는 모드. 가짜 주방 기록을 만들어 창을 연다.
+
+    실제 기록과 섞이지 않도록 임시 폴더에 쓰고, 저장도 메모리에만 한다.
+    """
+    import tempfile
+
+    from .demo import append_sample_order, write_sample_kitchen_log
+
+    folder = Path(tempfile.mkdtemp(prefix="what_number_demo_"))
+    write_sample_kitchen_log(folder)
+    print()
+    print("  시험 모드입니다. 아래 주문은 모두 가짜이고, 실제 포스와는 상관이 없습니다.")
+    print(f"  가짜 기록 폴더: {folder}")
+    print("  40초마다 새 주문이 한 건씩 들어옵니다.")
+
+    stopping = threading.Event()
+
+    def drip() -> None:
+        seq = 0
+        while not stopping.wait(40):
+            seq += 1
+            try:
+                append_sample_order(folder, seq)
+            except OSError:
+                return
+
+    threading.Thread(target=drip, name="demo", daemon=True).start()
+    try:
+        return watch_kitchen_log(cfg, str(folder), use_gui=use_gui, use_web=use_web,
+                                 store_path=":memory:", title="몇번인가요 (시험 모드)")
+    finally:
+        stopping.set()
+
+
 def watch_kitchen_log(cfg: config_module.Config, folder: str | None = None,
-                      use_gui: bool = True, use_web: bool = False) -> int:
+                      use_gui: bool = True, use_web: bool = False,
+                      store_path=None, title: str = "") -> int:
     """포스의 주방 인쇄 기록을 읽어 메뉴 검색 창을 연다. 관리자 권한이 필요 없다.
 
     기본은 창 하나로 끝난다. 폰·태블릿에서도 보고 싶을 때만 웹 화면을 함께 연다.
@@ -294,7 +305,7 @@ def watch_kitchen_log(cfg: config_module.Config, folder: str | None = None,
         pause()
         return 1
 
-    store = MenuStore(cfg.data_dir / "menus.db", retention_hours=cfg.retention_hours)
+    store = MenuStore(store_path or cfg.data_dir / "menus.db", retention_hours=cfg.retention_hours)
     caught_up = threading.Event()
 
     def on_ticket(ticket) -> None:
@@ -317,11 +328,13 @@ def watch_kitchen_log(cfg: config_module.Config, folder: str | None = None,
     if use_gui:
         if gui_module.available():
             note = "주방 기록: " + gui_module.short_path(target)
+            if title:
+                note = "시험 모드 - 가짜 주문입니다"
             if use_web:
                 addresses = local_ipv4_addresses()
                 if addresses:
                     note = f"폰·태블릿에서 보기: http://{addresses[0]}:{cfg.web_port}"
-            window = gui_module.SearchWindow(store, follower.status, note=note)
+            window = gui_module.SearchWindow(store, follower.status, note=note, title=title)
         else:
             print("  ! 이 PC 에서는 창을 띄울 수 없어 검은 창으로만 보여줍니다.")
             use_web = True
@@ -637,7 +650,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--port", type=int, help="화면 주소의 포트 번호")
     parser.add_argument("--no-browser", action="store_true", help="시작할 때 브라우저를 열지 않음")
     parser.add_argument("--replay", nargs="+", metavar="파일", help="저장된 인쇄 원본으로 인식 시험")
-    parser.add_argument("--demo", action="store_true", help="포스 없이 가짜 주문으로 화면만 확인")
+    parser.add_argument("--시험", "--demo", dest="demo", action="store_true",
+                        help="포스 없이 가짜 주문으로 창을 시험해 보기")
     parser.add_argument("--진단", "--diagnose", dest="diagnose", action="store_true",
                         help="이 PC의 프린터 연결 방식과 주문 데이터 위치를 조사")
     parser.add_argument("--탐색", "--scan", dest="scan", nargs="?", const=180, type=int,
@@ -677,7 +691,7 @@ def main(argv: list[str] | None = None) -> int:
         return replay(cfg, args.replay)
 
     if args.demo:
-        return demo(cfg)
+        return demo_window(cfg, use_gui=not args.no_gui, use_web=args.web)
 
     if args.receive:
         return receive(cfg, args.receive)
@@ -692,6 +706,11 @@ def main(argv: list[str] | None = None) -> int:
         found = cfg.kitchen_log_dir or find_log_folder()
         if found:
             return watch_kitchen_log(cfg, str(found), use_gui=not args.no_gui, use_web=args.web)
+        if not args.receive:
+            # 기록이 없으면 무엇을 해야 하는지 알려준다. 예전 감시 방식은 --탐색 으로만 쓴다.
+            print(KITCHEN_LOG_HELP)
+            pause()
+            return 1
 
     if not is_admin():
         print(ADMIN_HELP)

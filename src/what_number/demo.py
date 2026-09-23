@@ -108,10 +108,51 @@ def kitchen_log_entry(ticket: bytes, when) -> bytes:
     return _log_head(when, "CTransData::SetPrintOrderData") + b"....PrintContents[" + ticket + b"]\r\n"
 
 
+def _log_block(table: str, order_no: str, kind: str, items: list, when) -> bytes:
+    """주문 한 건이 기록에 남는 모양. 실제처럼 프린터마다 한 장씩 적힌다."""
+    out = bytearray()
+    out += kitchen_log_line(when, "CTransData::SendDataLink", "SendDataLink start - id [1] message [printer]")
+    for station in ("홀", "가니"):
+        out += kitchen_log_entry(kitchen_ticket(table, order_no, items, kind, station, when), when)
+        out += kitchen_log_line(when, "CTransData::SetUpdateFlag", "Print SUCCESS")
+    return bytes(out)
+
+
+def _log_path(folder, now):
+    from pathlib import Path
+
+    path = Path(str(folder)) / f"kitchenPrinter_trace_{now:%Y%m%d}.log"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+SAMPLE_MENUS = [
+    ("34. 감바스 오일 파스타", ["(약)"]),
+    ("49. 빠네 크림 파스타", ["크림 소스 추가"]),
+    ("20. 비프 찹 스테이크", ["순한맛"]),
+    ("43. 오븐 토마토 파스타", []),
+    ("07. 까르보나라 리조또", []),
+    ("31. 더블 포크 스테이크", ["순한맛", "(약)"]),
+]
+
+
+def append_sample_order(folder, seq: int, now=None):
+    """시험용 주문 한 건을 오늘 기록 파일 끝에 덧붙인다. 새 주문이 들어오는 모습을 보여준다."""
+    from datetime import datetime
+
+    now = now or datetime.now()
+    picked = random.sample(SAMPLE_MENUS, random.randint(1, 3))
+    items = [(name, random.choice([1, 1, 1, 2]), options) for name, options in picked]
+    block = _log_block("홀-%d" % random.randint(1, 20), "%04d-0001" % (100 + seq), "신규", items, now)
+    path = _log_path(folder, now)
+    with open(path, "ab") as handle:
+        handle.write(block)
+    return path
+
+
 def write_sample_kitchen_log(folder, now=None):
     """오늘 날짜의 주방 기록 파일을 만든다. 포스 없이 화면을 확인할 때 쓴다."""
     from datetime import datetime, timedelta
-    from pathlib import Path
 
     from .menu_store import BUSINESS_DAY_START_HOUR
 
@@ -131,11 +172,7 @@ def write_sample_kitchen_log(folder, now=None):
     out = bytearray()
     for minutes, table, order_no, kind, items in orders:
         when = max(now - timedelta(minutes=minutes), day_start)
-        out += kitchen_log_line(when, "CTransData::SendDataLink", "SendDataLink start - id [1] message [printer]")
-        for station in ("홀", "가니"):  # 실제처럼 프린터마다 한 장씩
-            out += kitchen_log_entry(kitchen_ticket(table, order_no, items, kind, station, when), when)
-            out += kitchen_log_line(when, "CTransData::SetUpdateFlag", "Print SUCCESS")
-    path = Path(str(folder)) / f"kitchenPrinter_trace_{now:%Y%m%d}.log"
-    path.parent.mkdir(parents=True, exist_ok=True)
+        out += _log_block(table, order_no, kind, items, when)
+    path = _log_path(folder, now)
     path.write_bytes(bytes(out))
     return path
