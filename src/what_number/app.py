@@ -222,10 +222,13 @@ KITCHEN_LOG_HELP = r"""
 
 
 def _console_window():
-    """이 프로그램이 쓰는 검은 창. 없으면 None.
+    """이 프로그램만 쓰는 검은 창. 숨겨도 되는 창이면 그 창을, 아니면 None.
 
-    더블클릭으로 켜면 윈도우가 이 프로그램만을 위해 검은 창을 하나 만들어 준다.
+    더블클릭으로 켜면 윈도우가 이 프로그램을 위해 검은 창을 하나 만들어 준다.
     반대로 사용자가 명령창에서 실행했다면 그 창은 사용자 것이라 건드리면 안 된다.
+
+    exe 는 실행 껍데기와 본체 두 프로세스가 같은 창을 쓴다. 그래서 '몇 개가 이 창을
+    쓰고 있는가' 로 가른다. 명령창에서 실행하면 명령창까지 끼어 하나가 더 늘어난다.
     """
     if os.name != "nt":
         return None
@@ -233,10 +236,9 @@ def _console_window():
         window = ctypes.windll.kernel32.GetConsoleWindow()
         if not window:
             return None
-        users = (ctypes.c_uint * 8)()
-        if ctypes.windll.kernel32.GetConsoleProcessList(users, 8) != 1:
-            return None  # 명령창도 같이 쓰는 창이다
-        return window
+        users = (ctypes.c_uint * 16)()
+        count = ctypes.windll.kernel32.GetConsoleProcessList(users, 16)
+        return window if count <= (2 if getattr(sys, "frozen", False) else 1) else None
     except Exception:
         return None
 
@@ -294,6 +296,18 @@ def watch_kitchen_log(cfg: config_module.Config, folder: str | None = None,
     from .kitchen_log import LogFollower, find_log_folder
     from .menu_store import MenuStore
 
+    # 창으로 보여줄 참이면 검은 창은 미리 숨긴다. 기록 폴더를 찾는 동안 잠깐 보이지 않도록.
+    console = _console_window() if use_gui and not use_web else None
+    if console is not None:
+        _show_console(console, False)
+
+    def with_console(code: int) -> int:
+        """검은 창에 적은 내용을 보여줘야 하는 경우. 숨겼던 창을 다시 띄운다."""
+        if console is not None:
+            _show_console(console, True)
+        pause()
+        return code
+
     target = Path(folder) if folder else (Path(cfg.kitchen_log_dir) if cfg.kitchen_log_dir else None)
     if target is None:
         print("  포스의 주방 기록 파일을 찾는 중입니다...")
@@ -302,8 +316,7 @@ def watch_kitchen_log(cfg: config_module.Config, folder: str | None = None,
         if target is not None:
             print(f"\n  ! 폴더가 없습니다: {target}")
         print(KITCHEN_LOG_HELP)
-        pause()
-        return 1
+        return with_console(1)
 
     store = MenuStore(store_path or cfg.data_dir / "menus.db", retention_hours=cfg.retention_hours)
     caught_up = threading.Event()
@@ -337,6 +350,9 @@ def watch_kitchen_log(cfg: config_module.Config, folder: str | None = None,
             window = gui_module.SearchWindow(store, follower.status, note=note, title=title)
         else:
             print("  ! 이 PC 에서는 창을 띄울 수 없어 검은 창으로만 보여줍니다.")
+            if console is not None:
+                _show_console(console, True)
+                console = None
             use_web = True
 
     httpd = None
@@ -352,8 +368,7 @@ def watch_kitchen_log(cfg: config_module.Config, folder: str | None = None,
             print("    이 프로그램이 이미 켜져 있는지 확인해 보세요.")
             if window is None:
                 store.close()
-                pause()
-                return 1
+                return with_console(1)
     follower.start()
 
     summary = store.summary()
@@ -389,12 +404,8 @@ def watch_kitchen_log(cfg: config_module.Config, folder: str | None = None,
 
     stopping = threading.Event()
     threading.Thread(target=housekeeping, name="housekeeping", daemon=True).start()
-    console = _console_window() if window is not None else None
     try:
         if window is not None:
-            # 창이 떴으면 검은 창은 숨긴다. 볼 일이 없고, 실수로 닫으면 프로그램이 꺼진다.
-            if console is not None:
-                _show_console(console, False)
             window.run()  # 창을 닫으면 여기서 빠져나온다
         else:
             while True:

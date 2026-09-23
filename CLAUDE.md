@@ -104,7 +104,7 @@ src/what_number/
 ## 개발
 
 ```bash
-PYTHONPATH=src python -m unittest discover -s tests   # 테스트 (현재 249건)
+PYTHONPATH=src python -m unittest discover -s tests   # 테스트 (현재 251건)
 PYTHONPATH=src python -m what_number --demo           # 포스 없이 화면 확인
 PYTHONPATH=src python -m what_number --replay 파일.bin  # 인쇄 원본으로 인식 시험
 PYTHONPATH=src python -m what_number --diagnose       # 이 PC 의 프린터 연결 방식 조사
@@ -233,6 +233,16 @@ exe 는 `.github/workflows/build-exe.yml` 이 윈도우에서 자동으로 만�
   예전에 만든 DB 파일에는 그 칸이 없으므로 `MenuStore._add_missing_columns` 가 채워 넣는다.
 - 테이블 이름이 길면('배달 배민원1') 번호 칸을 넘어 메뉴와 붙었다. 칸을 넓히고 긴 이름은
   작은 글씨로 줄인다(`gui.LONG_TABLE`).
+
+**2026-09-23 포스 PC 에서 쓰며 나온 것들.**
+- **한글 입력이 이상하다(글자가 밀린다).** Tk 의 윈도우 IME 처리 문제로 보인다. 손본 것:
+  메뉴 버튼을 없앴고(글자를 칠 때마다 버튼을 다시 만들고 있었다), 입력칸을 `textvariable` 과
+  묶지 않고 `<KeyRelease>` 로 읽으며, 입력칸을 밝은 색으로 했다(조합 중 흰 상자가 겹쳐 보였다).
+  **완전한 해결책은 영문 자판 검색**이다. `menu_store.keystrokes()` 가 메뉴 이름을 영문 자판으로
+  친 모양('비프'->'qlvm')으로 저장해, 한글 입력을 켜지 않고도 찾게 한다. 이것을 없애지 말 것.
+- 사용자가 메뉴 버튼(칩)을 필요 없다고 해서 없앴다. 다시 넣지 말 것.
+- 검은 창은 더블클릭으로 켰을 때만 숨긴다. exe 는 껍데기+본체 두 프로세스가 같은 창을 쓰므로
+  `GetConsoleProcessList` 가 2 이하일 때 숨긴다(명령창에서 실행하면 3 이상이라 그대로 둔다).
 
 **아직 확인 안 된 것**
 - 매장 포스 PC 에서 로그 폴더의 정확한 위치. 자동으로 찾게 했지만 실물로 확인할 것

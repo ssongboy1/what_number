@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS items (
     code       TEXT    NOT NULL DEFAULT '',
     options    TEXT    NOT NULL DEFAULT '',
     option_key TEXT    NOT NULL DEFAULT '',
+    menu_keys   TEXT   NOT NULL DEFAULT '',
+    option_keys TEXT   NOT NULL DEFAULT '',
     quantity   INTEGER NOT NULL,
     cancelled  INTEGER NOT NULL DEFAULT 0
 );
@@ -64,6 +66,38 @@ def business_day(when: float | None = None) -> str:
 def normalize(text: str) -> str:
     """검색용. '감바스 오일' 과 '감바스오일' 을 같게 본다."""
     return _SPACES.sub("", str(text or "")).lower()
+
+
+# 두벌식 자판. 한글을 영문 상태에서 친 모양으로 바꿔 두면, 한글 입력을 켜지 않고도 찾을 수 있다.
+_CHO = "r R s e E f a q Q t T d w W c z x v g".split()
+_JUNG = "k o i O j p u P h hk ho hl y n nj np nl b m ml l".split()
+_JONG = ["", "r", "R", "rt", "s", "sw", "sg", "e", "f", "fr", "fa", "fq", "ft", "fx", "fv",
+         "fg", "a", "q", "qt", "t", "T", "d", "w", "c", "z", "x", "v", "g"]
+_JAMO = {
+    "ㄱ": "r", "ㄲ": "R", "ㄴ": "s", "ㄷ": "e", "ㄸ": "E", "ㄹ": "f", "ㅁ": "a", "ㅂ": "q",
+    "ㅃ": "Q", "ㅅ": "t", "ㅆ": "T", "ㅇ": "d", "ㅈ": "w", "ㅉ": "W", "ㅊ": "c", "ㅋ": "z",
+    "ㅌ": "x", "ㅍ": "v", "ㅎ": "g", "ㅏ": "k", "ㅐ": "o", "ㅑ": "i", "ㅒ": "O", "ㅓ": "j",
+    "ㅔ": "p", "ㅕ": "u", "ㅖ": "P", "ㅗ": "h", "ㅛ": "y", "ㅜ": "n", "ㅠ": "b", "ㅡ": "m",
+    "ㅣ": "l",
+}
+
+
+def keystrokes(text: str) -> str:
+    """한글을 영문 자판으로 친 모양으로. '비프' -> 'qlvm'
+
+    포스 PC 에서 한글 입력이 말썽일 때, 영문 상태로 쳐도 메뉴를 찾을 수 있게 한다.
+    """
+    out = []
+    for char in str(text or ""):
+        code = ord(char)
+        if 0xAC00 <= code <= 0xD7A3:  # 완성된 한글 글자
+            index = code - 0xAC00
+            out.append(_CHO[index // 588] + _JUNG[(index % 588) // 28] + _JONG[index % 28])
+        elif char in _JAMO:  # ㄱ, ㅏ 같은 낱자
+            out.append(_JAMO[char])
+        elif not char.isspace():
+            out.append(char)
+    return "".join(out).lower()
 
 
 def _like(text: str) -> str:
@@ -103,8 +137,10 @@ class MenuStore:
     def _add_missing_columns(self) -> None:
         """예전에 만든 파일에 새 칸을 더한다. 다시 켜도 오늘 주문이 그대로 남아 있도록."""
         have = {row["name"] for row in self._conn.execute("PRAGMA table_info(items)")}
-        if "option_key" not in have:
-            self._conn.execute("ALTER TABLE items ADD COLUMN option_key TEXT NOT NULL DEFAULT ''")
+        for column in ("option_key", "menu_keys", "option_keys"):
+            if column not in have:
+                self._conn.execute(
+                    "ALTER TABLE items ADD COLUMN %s TEXT NOT NULL DEFAULT ''" % column)
 
     # --- 주문서 넣기 ---
     def add(self, ticket) -> list:
@@ -158,9 +194,9 @@ class MenuStore:
                 quantity = -missing if is_cancel else missing
                 self._conn.execute(
                     "INSERT INTO items (ticket_id, menu, menu_key, code, options, option_key,"
-                    " quantity) VALUES (?,?,?,?,?,?,?)",
+                    " menu_keys, option_keys, quantity) VALUES (?,?,?,?,?,?,?,?,?)",
                     (ticket_id, menu, normalize(menu), codes[key], options, normalize(options),
-                     quantity),
+                     keystrokes(menu), keystrokes(options), quantity),
                 )
                 if is_cancel:
                     self._cancel(day, base, ticket.table, menu, missing)
@@ -196,8 +232,13 @@ class MenuStore:
             return []
         # 메뉴 이름뿐 아니라 옵션에서도 찾는다. 세트 메뉴는 구성품이 옵션으로 들어가므로,
         # 스테이크가 나왔을 때 '스테이크' 로 찾으면 세트 주문도 나와야 한다.
-        condition = "(i.menu_key LIKE ? ESCAPE '\\' OR i.option_key LIKE ? ESCAPE '\\')"
+        parts = ["i.menu_key LIKE ? ESCAPE '\\'", "i.option_key LIKE ? ESCAPE '\\'"]
         params = [_like(key), _like(key)]
+        if key.isascii():
+            # 한글 입력을 켜지 않고 영문 상태로 친 경우. 'qlvm' 도 '비프' 로 찾아준다.
+            parts += ["i.menu_keys LIKE ? ESCAPE '\\'", "i.option_keys LIKE ? ESCAPE '\\'"]
+            params += [_like(key), _like(key)]
+        condition = "(" + " OR ".join(parts) + ")"
         if key.isdigit():
             condition = "(" + condition + " OR i.code = ?)"
             params.append(key)

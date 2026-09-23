@@ -56,6 +56,14 @@ class MenuStoreTest(unittest.TestCase):
         self.assertEqual(found["qty"], 2)
         self.assertEqual([r["table"] for r in self.store.search("카페라떼", DAY)], ["홀-9"])
 
+    def test_search_typed_on_an_english_keyboard(self):
+        self.store.add(ticket("홀-3", "0020-0001", [("20. 비프 찹 스테이크", 1, ["순한맛"])]))
+        self.store.add(ticket("홀-1", "0021-0001", [("34. 감바스 오일 파스타", 1, [])]))
+        self.assertEqual([r["table"] for r in self.store.search("qlvm", DAY)], ["홀-3"])
+        self.assertEqual([r["table"] for r in self.store.search("rkaqktm", DAY)], ["홀-1"])
+        self.assertEqual([r["table"] for r in self.store.search("tnsgksakt", DAY)], ["홀-3"])  # 옵션도
+        self.assertEqual(self.store.search("zzzz", DAY), [])
+
     def test_search_by_menu_number(self):
         self.store.add(ticket("홀-1", "0006-0001", [("34. 감바스 오일 파스타", 1, [])]))
         self.assertEqual(self.tables("34"), [("홀-1", "감바스 오일 파스타", 1)])
@@ -161,6 +169,18 @@ class MenuStoreTest(unittest.TestCase):
         self.assertEqual(self.tables("%"), [])
         self.assertEqual(self.tables("_"), [])
         self.assertEqual(self.tables("   "), [])
+
+
+class KeystrokesTest(unittest.TestCase):
+    """한글 입력을 켜지 않고 영문 상태로 친 글자로도 찾을 수 있어야 한다."""
+
+    def test_hangul_to_english_keys(self):
+        from what_number.menu_store import keystrokes
+
+        self.assertEqual(keystrokes("비프"), "qlvm")
+        self.assertEqual(keystrokes("감바스 오일"), "rkaqktmdhdlf")
+        self.assertEqual(keystrokes("까르보나라"), "rkfmqhskfk")  # ㄲ 는 대문자 R -> 소문자로
+        self.assertEqual(keystrokes("ICE"), "ice")
 
 
 class NormalizeTest(unittest.TestCase):

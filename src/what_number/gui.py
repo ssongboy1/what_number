@@ -20,9 +20,14 @@ ACCENT = "#ffc95c"
 FRESH = "#4ade80"
 BAD = "#f87171"
 
-FAMILY = "맑은 고딕"
+# 글꼴은 영문 이름으로 적는다. 한글 이름으로 주면 윈도우 입력기가 다른 글꼴로 조합 글자를
+# 그려서 네모로 보이는 일이 있다.
+FAMILY = "Malgun Gothic"
+# 입력칸은 밝게 둔다. 한글을 조합하는 동안 입력기가 흰 상자를 겹쳐 그리기 때문에,
+# 어두운 칸에서는 글자가 밀린 것처럼 보인다.
+FIELD = "#f4f6fa"
+FIELD_TEXT = "#10131a"
 REFRESH_MS = 2000
-MAX_CHIPS = 12
 TABLE_COLUMN = "124p"  # 테이블 번호 칸의 너비
 LONG_TABLE = 8  # 이보다 넓은 이름('배달 배민원1')은 작은 글씨로 줄여 칸 안에 넣는다
 TYPING_MS = 120  # 글자를 친 뒤 목록을 다시 그리기까지 기다리는 시간
@@ -108,8 +113,6 @@ class SearchWindow:
         self.status_provider = status_provider
         self.note = note
         self.query = ""
-        self._chip_buttons = []
-        self._chips_key = None
         self._view_key = None
         self._typing_job = None
 
@@ -123,7 +126,6 @@ class SearchWindow:
 
         self._build_head(tk)
         self._build_search(tk)
-        self._build_chips(tk)
         self._build_foot(tk)   # 아래쪽 자리를 먼저 잡아야 목록에 밀려 잘리지 않는다
         self._build_list(tk)
 
@@ -154,21 +156,22 @@ class SearchWindow:
     def _build_search(self, tk) -> None:
         box = tk.Frame(self.root, bg=BACKGROUND)
         box.pack(fill="x", padx=16, pady=(10, 0))
-        self.text_var = tk.StringVar()
+        # 입력칸을 변수(textvariable)와 묶지 않는다. 묶어 두면 글자를 칠 때마다 Tk 가 칸을
+        # 다시 맞추는데, 그 사이에 한글 조합이 끊겨 글자가 밀린다.
         self.entry = tk.Entry(
-            box, textvariable=self.text_var, font=(FAMILY, 18), bg=CARD, fg=TEXT,
-            insertbackground=ACCENT, relief="flat", highlightthickness=1,
+            box, font=(FAMILY, 18), bg=FIELD, fg=FIELD_TEXT,
+            insertbackground=FIELD_TEXT, relief="flat", highlightthickness=2,
             highlightbackground=LINE, highlightcolor=ACCENT,
         )
         self.entry.pack(side="left", fill="x", expand=True, ipady=8, ipadx=8)
-        self.text_var.trace_add("write", lambda *args: self._typed())
+        self.entry.bind("<KeyRelease>", lambda event: self._typed())
         tk.Button(box, text="지우기", command=lambda: self.set_query(""), bg=CARD, fg=MUTED,
                   font=(FAMILY, 11, "bold"), relief="flat", activebackground=LINE,
                   activeforeground=TEXT, cursor="hand2").pack(side="left", padx=(8, 0), ipadx=10, ipady=8)
 
         under = tk.Frame(self.root, bg=BACKGROUND)
         under.pack(fill="x", padx=18, pady=(4, 0))
-        tk.Label(under, text="메뉴 이름 일부를 치거나, 아래 버튼을 누르세요",
+        tk.Label(under, text="메뉴 이름 일부를 치면 그 메뉴를 주문한 테이블이 나옵니다",
                  bg=BACKGROUND, fg=MUTED, font=(FAMILY, 9)).pack(side="left")
         self.show_cancelled = tk.BooleanVar(value=True)
         tk.Checkbutton(
@@ -176,10 +179,6 @@ class SearchWindow:
             bg=BACKGROUND, fg=MUTED, font=(FAMILY, 9), selectcolor=CARD, activebackground=BACKGROUND,
             activeforeground=TEXT, highlightthickness=0, borderwidth=0, cursor="hand2",
         ).pack(side="right")
-
-    def _build_chips(self, tk) -> None:
-        self.chips = tk.Frame(self.root, bg=BACKGROUND)
-        self.chips.pack(fill="x", padx=12, pady=(6, 0))
 
     def _build_list(self, tk) -> None:
         wrap = tk.Frame(self.root, bg=BACKGROUND)
@@ -222,59 +221,26 @@ class SearchWindow:
         바로 다시 그리면 한글을 조합하는 중에 화면이 흔들려 글자가 밀린다.
         잠깐 기다렸다가, 더 치지 않으면 그때 그린다.
         """
-        self.query = self.text_var.get().strip()
+        self.query = self.entry.get().strip()
         if self._typing_job is not None:
             self.root.after_cancel(self._typing_job)
         self._typing_job = self.root.after(TYPING_MS, self._redraw)
 
     def _redraw(self) -> None:
         self._typing_job = None
-        self.render_chips(force=True)
         self.render(force=True)
 
     def set_query(self, text: str) -> None:
-        """버튼이나 지우기로 검색어를 정한다. 직접 친 것이 아니므로 곧바로 그린다."""
-        self.text_var.set(text)
-        self.entry.icursor("end")
-        self.entry.focus_set()
+        """지우기 같은 곳에서 검색어를 정한다. 직접 친 것이 아니므로 곧바로 그린다."""
+        self.entry.delete(0, "end")
+        if text:
+            self.entry.insert(0, text)
+        self.query = text.strip()
+        if self.root.focus_get() is not self.entry:
+            self.entry.focus_set()  # 이미 입력칸에 있으면 건드리지 않는다(조합 중인 한글이 끊긴다)
         if self._typing_job is not None:
             self.root.after_cancel(self._typing_job)
         self._redraw()
-
-    def _chip_clicked(self, menu: str):
-        def clicked() -> None:
-            self.set_query("" if self._same(menu) else menu)
-        return clicked
-
-    def _same(self, menu: str) -> bool:
-        from .menu_store import normalize
-
-        return bool(self.query) and normalize(menu) == normalize(self.query)
-
-    def render_chips(self, force: bool = False) -> None:
-        import tkinter as tk
-
-        menus = self.store.menus()[:MAX_CHIPS]
-        key = (tuple((item["menu"], item["count"]) for item in menus), self.query)
-        if not force and key == self._chips_key:
-            return  # 바뀐 것이 없으면 그대로 둔다. 다시 만들면 입력이 흔들린다
-        self._chips_key = key
-        for button in self._chip_buttons:
-            button.destroy()
-        self._chip_buttons = []
-        for index, item in enumerate(menus):
-            chosen = self._same(item["menu"])
-            button = tk.Button(
-                self.chips, text=f"{item['menu']}  {item['count']}",
-                command=self._chip_clicked(item["menu"]),
-                bg=ACCENT if chosen else CARD, fg="#2a1f00" if chosen else TEXT,
-                activebackground=ACCENT if chosen else LINE, activeforeground="#2a1f00" if chosen else TEXT,
-                font=(FAMILY, 10, "bold"), relief="flat", cursor="hand2", padx=10, pady=5,
-            )
-            button.grid(row=index // 2, column=index % 2, sticky="ew", padx=4, pady=3)
-            self._chip_buttons.append(button)
-        self.chips.grid_columnconfigure(0, weight=1)
-        self.chips.grid_columnconfigure(1, weight=1)
 
     def _write(self, text: str, *tags) -> None:
         self.view.insert("end", text, ("row",) + tags)
@@ -344,7 +310,6 @@ class SearchWindow:
         else:
             self.state_label.configure(text="주방 기록을 못 읽는 중")
         self.warn_label.configure(text=" / ".join(state.get("errors") or []))
-        self.render_chips()
         self.render()
         self.root.after(REFRESH_MS, self.refresh)
 

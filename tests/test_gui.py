@@ -96,11 +96,6 @@ class WindowTest(unittest.TestCase):
         self.assertIn("비프 찹 스테이크", self.shown())
         self.assertIn("순한맛, (약), 소스 따로", self.shown())
 
-    def test_menu_buttons_are_made(self):
-        labels = [button.cget("text") for button in self.window._chip_buttons]
-        self.assertIn("감바스 오일 파스타  1", labels)
-        self.assertIn("빠네 크림 파스타  2", labels)
-
     def test_typing_searches(self):
         self.window.set_query("감바스")
         self.window.root.update()
@@ -109,10 +104,10 @@ class WindowTest(unittest.TestCase):
         self.assertIn("홀-1", text)
         self.assertNotIn("빠네", text)
 
-    def test_menu_button_fills_the_box(self):
-        self.window._chip_clicked("빠네 크림 파스타")()
+    def test_setting_the_box_searches_at_once(self):
+        self.window.set_query("빠네 크림 파스타")
         self.window.root.update()
-        self.assertEqual(self.window.text_var.get(), "빠네 크림 파스타")
+        self.assertEqual(self.window.entry.get(), "빠네 크림 파스타")
         self.assertIn("홀-5", self.shown())
 
     def test_clearing_goes_back_to_recent_orders(self):
@@ -121,6 +116,14 @@ class WindowTest(unittest.TestCase):
         self.window.set_query("")
         self.window.root.update()
         self.assertIn("최근 주문", self.shown())
+
+    def test_english_typing_finds_korean_menus(self):
+        """한글 입력을 켜지 않고 영문 상태로 쳐도 찾아진다. 'qlvm' -> 비프..."""
+        self.store.add(ticket("홀-3", "0020-0001", [("20. 비프 찹 스테이크", 1, [])]))
+        self.window.set_query("qlvm")
+        self.window.root.update()
+        self.assertIn("비프 찹 스테이크", self.shown())
+        self.assertIn("홀-3", self.shown())
 
     def test_nothing_found(self):
         self.window.set_query("없는메뉴")
@@ -160,7 +163,8 @@ class WindowTest(unittest.TestCase):
     def test_typing_waits_a_moment_before_redrawing(self):
         """한글을 조합하는 중에 화면이 흔들리지 않도록 잠깐 기다린다."""
         self.window.set_query("")
-        self.window.text_var.set("감바")
+        self.window.entry.insert(0, "감바")
+        self.window._typed()
         self.assertIsNotNone(self.window._typing_job)
         self.assertIn("최근 주문", self.shown())  # 아직 다시 그리지 않았다
         self.window._redraw()
