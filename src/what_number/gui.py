@@ -23,7 +23,8 @@ BAD = "#f87171"
 FAMILY = "맑은 고딕"
 REFRESH_MS = 2000
 MAX_CHIPS = 12
-TABLE_COLUMN = "104p"  # 테이블 번호 칸의 너비
+TABLE_COLUMN = "124p"  # 테이블 번호 칸의 너비
+LONG_TABLE = 8  # 이보다 넓은 이름('배달 배민원1')은 작은 글씨로 줄여 칸 안에 넣는다
 TYPING_MS = 120  # 글자를 친 뒤 목록을 다시 그리기까지 기다리는 시간
 
 
@@ -194,10 +195,12 @@ class SearchWindow:
         self.view.pack(side="left", fill="both", expand=True)
 
         # 테이블 번호 자리를 고정해 둔다. 메뉴가 여러 개여도 줄 앞이 가지런하도록.
-        self.view.tag_configure("row", tabs=(TABLE_COLUMN,), lmargin2=TABLE_COLUMN)
+        self.view.tag_configure("row", tabs=(TABLE_COLUMN, "180p", "240p"), lmargin2=TABLE_COLUMN)
         self.view.tag_configure("title", foreground=MUTED, font=(FAMILY, 10), spacing3=8)
         self.view.tag_configure("table", foreground=TEXT, font=(FAMILY, 20, "bold"))
         self.view.tag_configure("table_fresh", foreground=ACCENT, font=(FAMILY, 20, "bold"))
+        self.view.tag_configure("table_long", foreground=TEXT, font=(FAMILY, 12, "bold"))
+        self.view.tag_configure("table_long_fresh", foreground=ACCENT, font=(FAMILY, 12, "bold"))
         self.view.tag_configure("menu", foreground=TEXT, font=(FAMILY, 13, "bold"))
         self.view.tag_configure("cancelled", foreground=MUTED, font=(FAMILY, 13, "bold", "overstrike"))
         self.view.tag_configure("note", foreground=MUTED, font=(FAMILY, 10))
@@ -277,8 +280,13 @@ class SearchWindow:
         self.view.insert("end", text, ("row",) + tags)
 
     def _write_head(self, table: str, fresh: bool) -> None:
-        """줄 맨 앞의 테이블 번호. 뒤 내용은 늘 같은 자리에서 시작한다."""
-        self._write(table + "\t", "table_fresh" if fresh else "table")
+        """줄 맨 앞의 테이블 번호. 뒤 내용은 늘 같은 자리에서 시작한다.
+
+        '배달 배민원1' 처럼 긴 이름은 작은 글씨로 줄여 칸을 넘지 않게 한다.
+        """
+        long = sum(2 if ord(char) > 0x7F else 1 for char in table) > LONG_TABLE
+        tag = ("table_long" if long else "table") + ("_fresh" if fresh else "")
+        self._write(table + "\t", tag)
 
     def render(self, force: bool = False) -> None:
         now = time.time()

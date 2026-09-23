@@ -104,7 +104,7 @@ src/what_number/
 ## 개발
 
 ```bash
-PYTHONPATH=src python -m unittest discover -s tests   # 테스트 (현재 247건)
+PYTHONPATH=src python -m unittest discover -s tests   # 테스트 (현재 249건)
 PYTHONPATH=src python -m what_number --demo           # 포스 없이 화면 확인
 PYTHONPATH=src python -m what_number --replay 파일.bin  # 인쇄 원본으로 인식 시험
 PYTHONPATH=src python -m what_number --diagnose       # 이 PC 의 프린터 연결 방식 조사
@@ -225,6 +225,14 @@ exe 는 `.github/workflows/build-exe.yml` 이 윈도우에서 자동으로 만�
   (사용자 포스 로그의 `홀-2` 와 다름). 통째로 문자열로 쓰므로 둘 다 문제없다.
 - 메뉴명에 `★`, `(배달)`, `(리뷰)`, `[스페셜티 원두]`, `(L)` 이 붙고, 세트 메뉴는 구성품이 옵션으로
   들어간다(옵션 최대 5개). 옵션 이름에도 띄어쓰기가 흔하다.
+
+세트 메뉴·긴 옵션도 실제 이름으로 확인했다(옵션 5개, 두 줄로 잘리는 옵션 포함, 모두 정확).
+그 과정에서 두 가지를 더 고쳤다.
+- **검색이 메뉴 이름만 봤다.** 세트 메뉴는 구성품이 옵션으로 들어가므로, 스테이크가 나왔을 때
+  '스테이크' 로 찾으면 커플세트 주문이 안 나왔다. `items.option_key` 를 더해 옵션에서도 찾는다.
+  예전에 만든 DB 파일에는 그 칸이 없으므로 `MenuStore._add_missing_columns` 가 채워 넣는다.
+- 테이블 이름이 길면('배달 배민원1') 번호 칸을 넘어 메뉴와 붙었다. 칸을 넓히고 긴 이름은
+  작은 글씨로 줄인다(`gui.LONG_TABLE`).
 
 **아직 확인 안 된 것**
 - 매장 포스 PC 에서 로그 폴더의 정확한 위치. 자동으로 찾게 했지만 실물로 확인할 것

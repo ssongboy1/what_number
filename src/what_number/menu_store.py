@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS items (
     menu_key   TEXT    NOT NULL,
     code       TEXT    NOT NULL DEFAULT '',
     options    TEXT    NOT NULL DEFAULT '',
+    option_key TEXT    NOT NULL DEFAULT '',
     quantity   INTEGER NOT NULL,
     cancelled  INTEGER NOT NULL DEFAULT 0
 );
@@ -96,7 +97,14 @@ class MenuStore:
         self._conn.row_factory = sqlite3.Row
         with self._lock:
             self._conn.executescript(_SCHEMA)
+            self._add_missing_columns()
             self._conn.commit()
+
+    def _add_missing_columns(self) -> None:
+        """예전에 만든 파일에 새 칸을 더한다. 다시 켜도 오늘 주문이 그대로 남아 있도록."""
+        have = {row["name"] for row in self._conn.execute("PRAGMA table_info(items)")}
+        if "option_key" not in have:
+            self._conn.execute("ALTER TABLE items ADD COLUMN option_key TEXT NOT NULL DEFAULT ''")
 
     # --- 주문서 넣기 ---
     def add(self, ticket) -> list:
@@ -149,9 +157,10 @@ class MenuStore:
                 menu, options, is_cancel = key
                 quantity = -missing if is_cancel else missing
                 self._conn.execute(
-                    "INSERT INTO items (ticket_id, menu, menu_key, code, options, quantity)"
-                    " VALUES (?,?,?,?,?,?)",
-                    (ticket_id, menu, normalize(menu), codes[key], options, quantity),
+                    "INSERT INTO items (ticket_id, menu, menu_key, code, options, option_key,"
+                    " quantity) VALUES (?,?,?,?,?,?,?)",
+                    (ticket_id, menu, normalize(menu), codes[key], options, normalize(options),
+                     quantity),
                 )
                 if is_cancel:
                     self._cancel(day, base, ticket.table, menu, missing)
@@ -185,8 +194,10 @@ class MenuStore:
         key = normalize(query)
         if not key:
             return []
-        condition = "i.menu_key LIKE ? ESCAPE '\\'"
-        params = [_like(key)]
+        # 메뉴 이름뿐 아니라 옵션에서도 찾는다. 세트 메뉴는 구성품이 옵션으로 들어가므로,
+        # 스테이크가 나왔을 때 '스테이크' 로 찾으면 세트 주문도 나와야 한다.
+        condition = "(i.menu_key LIKE ? ESCAPE '\\' OR i.option_key LIKE ? ESCAPE '\\')"
+        params = [_like(key), _like(key)]
         if key.isdigit():
             condition = "(" + condition + " OR i.code = ?)"
             params.append(key)

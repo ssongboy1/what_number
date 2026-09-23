@@ -36,6 +36,26 @@ class MenuStoreTest(unittest.TestCase):
         self.assertEqual(self.tables("파스타"), [("홀-2", "오븐 토마토 파스타", 2), ("홀-1", "감바스 오일 파스타", 1)])
         self.assertEqual(self.store.search("감바스", DAY)[0]["options"], "(약)")
 
+    def test_search_finds_set_menus_by_their_parts(self):
+        """세트 메뉴는 구성품이 옵션으로 들어간다. 스테이크가 나왔을 때도 찾아져야 한다."""
+        self.store.add(ticket("홀-17", "0100-0001", [
+            ("★2. 커플 SET [2인]", 1, ["★블랙 스톤 스테이크", "★고르곤졸라 피자(L)", "★딸기 에이드"])]))
+        self.store.add(ticket("홀-3", "0101-0001", [("20. 비프 찹 스테이크", 1, ["순한맛"])]))
+        self.assertEqual(
+            [(r["table"], r["menu"]) for r in self.store.search("스테이크", DAY)],
+            [("홀-3", "비프 찹 스테이크"), ("홀-17", "★2. 커플 SET [2인]")],
+        )
+        self.assertEqual([r["table"] for r in self.store.search("에이드", DAY)], ["홀-17"])
+        self.assertEqual([r["table"] for r in self.store.search("고르곤졸라", DAY)], ["홀-17"])
+
+    def test_long_option_names_survive(self):
+        options = ["머스타드 크리미 드레싱(추천)", "(ICE) 카페라떼 [스페셜 티 원두]"]
+        self.store.add(ticket("홀-9", "0102-0001", [("★8. 스테이크 쉐어링 플래터", 2, options)]))
+        found = self.store.search("쉐어링", DAY)[0]
+        self.assertEqual(found["options"], ", ".join(options))
+        self.assertEqual(found["qty"], 2)
+        self.assertEqual([r["table"] for r in self.store.search("카페라떼", DAY)], ["홀-9"])
+
     def test_search_by_menu_number(self):
         self.store.add(ticket("홀-1", "0006-0001", [("34. 감바스 오일 파스타", 1, [])]))
         self.assertEqual(self.tables("34"), [("홀-1", "감바스 오일 파스타", 1)])
