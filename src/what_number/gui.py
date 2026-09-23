@@ -23,10 +23,9 @@ BAD = "#f87171"
 # 글꼴은 영문 이름으로 적는다. 한글 이름으로 주면 윈도우 입력기가 다른 글꼴로 조합 글자를
 # 그려서 네모로 보이는 일이 있다.
 FAMILY = "Malgun Gothic"
-# 입력칸은 밝게 둔다. 한글을 조합하는 동안 입력기가 흰 상자를 겹쳐 그리기 때문에,
-# 어두운 칸에서는 글자가 밀린 것처럼 보인다.
-FIELD = "#f4f6fa"
-FIELD_TEXT = "#10131a"
+# 입력칸도 화면과 같은 어두운 색으로. 밝게 했더니 혼자 튀어 보였다.
+FIELD = CARD
+FIELD_TEXT = TEXT
 REFRESH_MS = 2000
 TABLE_COLUMN = "124p"  # 테이블 번호 칸의 너비
 LONG_TABLE = 8  # 이보다 넓은 이름('배달 배민원1')은 작은 글씨로 줄여 칸 안에 넣는다
@@ -160,7 +159,7 @@ class SearchWindow:
         # 다시 맞추는데, 그 사이에 한글 조합이 끊겨 글자가 밀린다.
         self.entry = tk.Entry(
             box, font=(FAMILY, 18), bg=FIELD, fg=FIELD_TEXT,
-            insertbackground=FIELD_TEXT, relief="flat", highlightthickness=2,
+            insertbackground=ACCENT, relief="flat", highlightthickness=2,
             highlightbackground=LINE, highlightcolor=ACCENT,
         )
         self.entry.pack(side="left", fill="x", expand=True, ipady=8, ipadx=8)
