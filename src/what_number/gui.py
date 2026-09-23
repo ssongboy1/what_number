@@ -55,17 +55,16 @@ def result_line(found: dict, now: float | None = None) -> tuple:
 
 
 def ticket_lines(ticket: dict) -> list:
-    """최근 주문서 한 장의 메뉴 줄들."""
+    """최근 주문서 한 장의 메뉴 줄들. [(메뉴, 옵션, 취소인지)]
+
+    메뉴와 옵션을 나눠 돌려준다. 옵션이 여러 개면 옅은 글씨로 뒤에 붙이기 위해서다.
+    """
     lines = []
     for item in ticket.get("items", []):
         text = item.get("menu", "")
         if item.get("qty", 1) > 1:
             text += " x%d" % item["qty"]
-        if item.get("options"):
-            text += " · " + item["options"]
-        if item.get("cancelled"):
-            text += " (취소됨)"
-        lines.append(text)
+        lines.append((text, item.get("options") or "", bool(item.get("cancelled"))))
     return lines
 
 
@@ -201,6 +200,7 @@ class SearchWindow:
         self.view.tag_configure("menu", foreground=TEXT, font=(FAMILY, 13, "bold"))
         self.view.tag_configure("cancelled", foreground=MUTED, font=(FAMILY, 13, "bold", "overstrike"))
         self.view.tag_configure("note", foreground=MUTED, font=(FAMILY, 10))
+        self.view.tag_configure("note_gone", foreground=MUTED, font=(FAMILY, 10, "overstrike"))
         self.view.tag_configure("when", foreground=MUTED, font=(FAMILY, 10), spacing3=12)
         self.view.tag_configure("empty", foreground=MUTED, font=(FAMILY, 11), spacing1=20)
 
@@ -311,11 +311,13 @@ class SearchWindow:
             for ticket in recent:
                 self._write_head(ticket.get("table") or "?",
                                  now - ticket.get("printed_at", 0) <= 20 * 60)
-                items = ticket.get("items") or [{}]
-                for index, item in enumerate(items):
-                    line = ticket_lines({"items": [item]})
-                    self._write(("" if index == 0 else "\t") + (line[0] if line else "") + "\n",
-                                "cancelled" if item.get("cancelled") else "menu")
+                for index, (text, options, gone) in enumerate(ticket_lines(ticket) or [("", "", False)]):
+                    self._write(("" if index == 0 else "\t") + text, "cancelled" if gone else "menu")
+                    if options:
+                        self._write("  " + options, "note_gone" if gone else "note")
+                    if gone:
+                        self._write("  (취소됨)", "note_gone")
+                    self._write("\n", "menu")
                 self._write(
                     "\t" + elapsed(ticket.get("printed_at", 0), now)
                     + "   " + clock(ticket.get("printed_at", 0)) + "\n",

@@ -39,12 +39,15 @@ class LineTest(unittest.TestCase):
         self.assertEqual((table, menu), ("홀-5", "빠네 크림 파스타 x2"))
         self.assertEqual(note, "크림 소스 추가 · 추가 주문")
 
-    def test_ticket_lines_do_not_double_the_brackets(self):
+    def test_ticket_lines_keep_menu_and_options_apart(self):
         lines = gui.ticket_lines({"items": [
             {"menu": "감바스 오일 파스타", "qty": 1, "options": "(약)", "cancelled": False},
-            {"menu": "비프 찹 스테이크", "qty": 2, "options": "", "cancelled": True},
+            {"menu": "비프 찹 스테이크", "qty": 2, "options": "순한맛, 소스 따로", "cancelled": True},
         ]})
-        self.assertEqual(lines, ["감바스 오일 파스타 · (약)", "비프 찹 스테이크 x2 (취소됨)"])
+        self.assertEqual(lines, [
+            ("감바스 오일 파스타", "(약)", False),
+            ("비프 찹 스테이크 x2", "순한맛, 소스 따로", True),
+        ])
 
     def test_missing_table_is_a_question_mark(self):
         self.assertEqual(gui.result_line({"printed_at": 0})[0], "?")
@@ -82,7 +85,16 @@ class WindowTest(unittest.TestCase):
     def test_recent_orders_are_listed(self):
         self.assertIn("최근 주문", self.shown())
         self.assertIn("홀-1", self.shown())
-        self.assertIn("감바스 오일 파스타 · (약)", self.shown())
+        self.assertIn("감바스 오일 파스타", self.shown())
+        self.assertIn("(약)", self.shown())
+
+    def test_many_options_are_all_shown(self):
+        self.store.add(ticket("홀-7", "0030-0001",
+                              [("20. 비프 찹 스테이크", 1, ["순한맛", "(약)", "소스 따로"])]))
+        self.window._redraw()
+        self.window.root.update()
+        self.assertIn("비프 찹 스테이크", self.shown())
+        self.assertIn("순한맛, (약), 소스 따로", self.shown())
 
     def test_menu_buttons_are_made(self):
         labels = [button.cget("text") for button in self.window._chip_buttons]
