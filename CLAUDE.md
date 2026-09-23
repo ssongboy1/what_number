@@ -59,7 +59,8 @@ src/what_number/
   changes.py     변화찾기. 주문을 넣을 때 PC 의 어떤 파일이 바뀌는지 찾아 복사해 묶는다
   kitchen_log.py ★ VD 포스 주방 기록을 따라 읽고 주문서를 해석 (지금 쓰는 수집 계층)
   menu_store.py  ★ 메뉴·테이블 저장. 프린터별 중복 합치기, 취소 반영, 메뉴 검색
-  search_web.py  ★ 메뉴로 테이블 찾기 화면 + /api/search, /api/overview
+  search_web.py  ★ 폰·태블릿용 웹 화면 (--web 일 때만 켠다)
+  gui.py         ★ 메뉴로 테이블 찾기 창 (tkinter). 기본 화면이다
 ```
 
 ## 밟았던 함정 (다시 밟지 말 것)
@@ -103,7 +104,7 @@ src/what_number/
 ## 개발
 
 ```bash
-PYTHONPATH=src python -m unittest discover -s tests   # 테스트 (현재 221건)
+PYTHONPATH=src python -m unittest discover -s tests   # 테스트 (현재 234건)
 PYTHONPATH=src python -m what_number --demo           # 포스 없이 화면 확인
 PYTHONPATH=src python -m what_number --replay 파일.bin  # 인쇄 원본으로 인식 시험
 PYTHONPATH=src python -m what_number --diagnose       # 이 PC 의 프린터 연결 방식 조사
@@ -186,6 +187,15 @@ exe 는 `.github/workflows/build-exe.yml` 이 윈도우에서 자동으로 만�
 - `demo.kitchen_ticket()` 은 실제 로그와 **바이트 단위로 같은** 주문서를 만든다(실측 3건 대조).
   테스트와 exe 빌드 확인(`주방 기록 읽기 확인` 단계)이 이것을 쓴다
 - 사용자의 실제 로그(`로그파일\`)로 돌려 봤다: 주문서 16장 -> 8건, 취소 반영 후 홀-1 감바스만 남음(맞음)
+
+**2026-09-23 창(GUI)으로 바꿨다.** 사용자가 포스 PC 에서 실행해 보니 검은 창에는 주문이
+찍히는데 브라우저 화면은 왼쪽 위 "연결 중" 에서 멈췄다. 포스 PC 의 기본 브라우저가 오래되어
+요즘 문법(화살표 함수·fetch)을 못 읽은 것으로 보인다. 그래서
+- `search_web.py` 의 화면 코드를 **ES5(var, XMLHttpRequest)** 로 다시 썼다. 요즘 문법을 쓰지 말 것.
+  화면에서 오류가 나면 `window.onerror` 가 빨간 글씨로 보여준다
+- 사용자가 "창 하나면 웹은 필요 없다" 고 해서 **기본은 창(gui.py)** 으로 바꿨다.
+  웹은 `--web` 일 때만 켠다. 그러면 방화벽 창도 안 뜨고 포트도 쓰지 않는다
+- 창은 저장소를 직접 본다(HTTP 를 거치지 않는다). 2초마다 새로 그린다
 
 **아직 확인 안 된 것**
 - 매장 포스 PC 에서 로그 폴더의 정확한 위치. 자동으로 찾게 했지만 실물로 확인할 것

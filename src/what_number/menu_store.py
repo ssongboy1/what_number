@@ -84,7 +84,7 @@ class MenuStore:
 
     # --- 주문서 넣기 ---
     def add(self, ticket) -> list:
-        """주방 주문서 한 장을 넣는다. 새로 더해진 줄을 [(메뉴, 수량)] 으로 돌려준다.
+        """주방 주문서 한 장을 넣는다. 새로 더해진 줄을 [(메뉴, 수량, 옵션)] 으로 돌려준다.
 
         같은 주문서를 여러 번 넣어도(프린터가 여러 대거나 다시 읽거나) 결과가 같다.
         """
@@ -139,7 +139,7 @@ class MenuStore:
                 )
                 if is_cancel:
                     self._cancel(day, base, ticket.table, menu, missing)
-                added.append((menu, quantity))
+                added.append((menu, quantity, options))
         return added
 
     def _cancel(self, day: str, base: str, table: str, menu: str, count: int) -> None:

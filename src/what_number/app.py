@@ -246,11 +246,15 @@ KITCHEN_LOG_HELP = r"""
 """
 
 
-def watch_kitchen_log(cfg: config_module.Config, folder: str | None = None) -> int:
-    """포스의 주방 인쇄 기록을 읽어 메뉴 검색 화면을 연다. 관리자 권한이 필요 없다."""
+def watch_kitchen_log(cfg: config_module.Config, folder: str | None = None,
+                      use_gui: bool = True, use_web: bool = False) -> int:
+    """포스의 주방 인쇄 기록을 읽어 메뉴 검색 창을 연다. 관리자 권한이 필요 없다.
+
+    기본은 창 하나로 끝난다. 폰·태블릿에서도 보고 싶을 때만 웹 화면을 함께 연다.
+    """
+    from . import gui as gui_module
     from .kitchen_log import LogFollower, find_log_folder
     from .menu_store import MenuStore
-    from .search_web import serve_search
 
     target = Path(folder) if folder else (Path(cfg.kitchen_log_dir) if cfg.kitchen_log_dir else None)
     if target is None:
@@ -271,8 +275,10 @@ def watch_kitchen_log(cfg: config_module.Config, folder: str | None = None) -> i
         if not caught_up.is_set() or not added:
             return  # 켤 때 오늘 것을 한꺼번에 읽는 동안은 하나하나 찍지 않는다
         menus = ", ".join(
-            menu + (" 취소" if quantity < 0 else (f" x{quantity}" if quantity > 1 else ""))
-            for menu, quantity in added
+            menu
+            + (f" ({options})" if options else "")
+            + (" 취소" if quantity < 0 else (f" x{quantity}" if quantity > 1 else ""))
+            for menu, quantity, options in added
         )
         print(f"  {datetime.fromtimestamp(ticket.when):%H:%M:%S}  {ticket.table or '?':<6} {menus}")
 
@@ -280,50 +286,82 @@ def watch_kitchen_log(cfg: config_module.Config, folder: str | None = None) -> i
     follower.poll()
     caught_up.set()
 
-    try:
-        httpd, _ = serve_search(store, cfg.web_port, follower.status)
-    except OSError:
-        # 포트를 독점으로 열기 때문에, 이미 켜져 있으면 여기서 걸린다.
-        print()
-        print(f"  {cfg.web_port} 번을 이미 다른 프로그램이 쓰고 있습니다.")
-        print("  이 프로그램이 이미 켜져 있는지 확인해 보세요.")
-        store.close()
-        pause()
-        return 1
+    window = None
+    if use_gui:
+        if gui_module.available():
+            note = "주방 기록: " + gui_module.short_path(target)
+            if use_web:
+                addresses = local_ipv4_addresses()
+                if addresses:
+                    note = f"폰·태블릿에서 보기: http://{addresses[0]}:{cfg.web_port}"
+            window = gui_module.SearchWindow(store, follower.status, note=note)
+        else:
+            print("  ! 이 PC 에서는 창을 띄울 수 없어 검은 창으로만 보여줍니다.")
+            use_web = True
+
+    httpd = None
+    if use_web:
+        try:
+            from .search_web import serve_search
+
+            httpd, _ = serve_search(store, cfg.web_port, follower.status)
+        except OSError:
+            # 포트를 독점으로 열기 때문에, 이미 켜져 있으면 여기서 걸린다.
+            print()
+            print(f"  ! {cfg.web_port} 번을 이미 다른 프로그램이 쓰고 있습니다.")
+            print("    이 프로그램이 이미 켜져 있는지 확인해 보세요.")
+            if window is None:
+                store.close()
+                pause()
+                return 1
     follower.start()
 
     summary = store.summary()
-    addresses = local_ipv4_addresses()
     print("=" * 62)
     print("  몇번인가요 - 메뉴로 테이블 찾기")
     print("=" * 62)
-    print(f"  이 PC에서 보기  : http://127.0.0.1:{cfg.web_port}")
-    for address in addresses:
-        print(f"  폰·태블릿에서   : http://{address}:{cfg.web_port}")
-    print(f"  주방 기록 폴더  : {target}")
-    print(f"  오늘 주문서     : {summary['tickets']}장")
+    print(f"  주방 기록 폴더 : {target}")
+    print(f"  오늘 주문서    : {summary['tickets']}장")
+    if window is not None:
+        print("  화면           : 따로 뜬 창에서 메뉴를 검색하세요")
+    if httpd is not None:
+        print(f"  이 PC에서 보기 : http://127.0.0.1:{cfg.web_port}")
+        for address in local_ipv4_addresses():
+            print(f"  폰·태블릿에서  : http://{address}:{cfg.web_port}")
     for message in follower.errors:
         print("  ! " + message)
     print("-" * 62)
     print("  포스의 기록을 읽기만 합니다. 이 창을 닫아도 포스에는 영향이 없습니다.")
-    print("  새 주문서가 들어오면 아래에 표시됩니다. 끄려면 이 창을 닫으세요.")
+    print("  새 주문서가 들어오면 아래에 표시됩니다.")
+    print("  끄려면 창을 닫으세요." if window is not None else "  끄려면 이 창을 닫으세요.")
     print()
 
-    if cfg.open_browser:
+    if httpd is not None and window is None and cfg.open_browser:
         webbrowser.open(f"http://127.0.0.1:{cfg.web_port}")
 
-    last_purge = time.time()
-    try:
-        while True:
-            time.sleep(0.5)
+    def housekeeping() -> None:
+        last_purge = time.time()
+        while not stopping.is_set():
             if time.time() - last_purge > 600:
                 store.purge_old()
                 last_purge = time.time()
+            stopping.wait(0.5)
+
+    stopping = threading.Event()
+    threading.Thread(target=housekeeping, name="housekeeping", daemon=True).start()
+    try:
+        if window is not None:
+            window.run()  # 창을 닫으면 여기서 빠져나온다
+        else:
+            while True:
+                time.sleep(0.5)
     except KeyboardInterrupt:
         pass
     finally:
+        stopping.set()
         follower.stop()
-        httpd.shutdown()
+        if httpd is not None:
+            httpd.shutdown()
         store.close()
     return 0
 
@@ -573,6 +611,10 @@ def main(argv: list[str] | None = None) -> int:
                         metavar="포트", help="가상 프린터가 되어 주문서를 받기 (관리자 권한 불필요)")
     parser.add_argument("--기록", "--log", dest="log", nargs="?", const="", metavar="폴더",
                         help="포스의 주방 기록을 읽어 메뉴로 테이블 찾기 (옵션 없이 켜도 기록이 있으면 이 방식)")
+    parser.add_argument("--웹", "--web", dest="web", action="store_true",
+                        help="폰·태블릿에서도 볼 수 있게 웹 화면을 함께 연다")
+    parser.add_argument("--창없이", "--no-gui", dest="no_gui", action="store_true",
+                        help="창을 띄우지 않고 검은 창으로만 보여준다")
     parser.add_argument("--변화찾기", "--changes", dest="changes", nargs="?", const="",
                         metavar="폴더", help="주문이 들어올 때 이 PC 의 어떤 파일이 바뀌는지 찾기")
     parser.add_argument("--seconds", type=int, default=1800, metavar="초",
@@ -606,7 +648,7 @@ def main(argv: list[str] | None = None) -> int:
         return receive(cfg, args.receive)
 
     if args.log is not None:
-        return watch_kitchen_log(cfg, args.log or None)
+        return watch_kitchen_log(cfg, args.log or None, use_gui=not args.no_gui, use_web=args.web)
 
     if not args.scan:
         # 옵션 없이 켰을 때: 포스의 주방 기록이 있으면 그것을 읽는다. 더블클릭만으로 쓰게 하려고.
@@ -614,7 +656,7 @@ def main(argv: list[str] | None = None) -> int:
 
         found = cfg.kitchen_log_dir or find_log_folder()
         if found:
-            return watch_kitchen_log(cfg, str(found))
+            return watch_kitchen_log(cfg, str(found), use_gui=not args.no_gui, use_web=args.web)
 
     if not is_admin():
         print(ADMIN_HELP)

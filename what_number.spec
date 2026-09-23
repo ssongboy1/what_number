@@ -7,11 +7,12 @@ a = Analysis(
     binaries=[],
     datas=[],
     hiddenimports=['what_number.demo', 'what_number.scan', 'what_number.diagnose', 'what_number.changes',
-                   'what_number.kitchen_log', 'what_number.menu_store', 'what_number.search_web'],
+                   'what_number.kitchen_log', 'what_number.menu_store', 'what_number.search_web',
+                   'what_number.gui'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['tkinter', 'unittest'],
+    excludes=['unittest'],
     noarchive=False,
     optimize=0,
 )
@@ -36,5 +37,4 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    uac_admin=True,
 )

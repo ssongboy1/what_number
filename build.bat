@@ -34,15 +34,14 @@ if errorlevel 1 (
 echo  [2/2] exe 만드는 중... (1~2분 걸립니다)
 %PY% -m PyInstaller ^
     --onefile ^
-    --uac-admin ^
     --console ^
     --clean ^
     --noconfirm ^
     --name what_number ^
     --paths src ^
-    --exclude-module tkinter ^
     --exclude-module unittest ^
     --hidden-import what_number.demo ^
+    --hidden-import what_number.gui ^
     launcher.py
 if errorlevel 1 (
     echo  [!] 빌드에 실패했습니다.
@@ -54,6 +53,6 @@ echo.
 echo  완료:  dist\what_number.exe
 echo.
 echo  이 파일 하나만 포스 PC로 복사하면 됩니다.
-echo  --uac-admin 이 들어가 있어 실행하면 관리자 권한을 자동으로 요청합니다.
+echo  주방 기록 읽기에는 관리자 권한이 필요 없습니다.
 echo.
 pause

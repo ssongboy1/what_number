@@ -47,16 +47,15 @@ jobs:
         run: >
           python -m PyInstaller
           --onefile
-          --uac-admin
           --console
           --clean
           --noconfirm
           --noupx
           --name what_number
           --paths src
-          --exclude-module tkinter
           --exclude-module unittest
           --hidden-import what_number.demo
+          --hidden-import what_number.gui
           launcher.py
 
       # 만들어진 exe 가 실제로 실행되는지, 전표 인식까지 되는지 확인한다.
@@ -83,7 +82,7 @@ jobs:
           $logs = Join-Path $env:RUNNER_TEMP "kitchen_check\log"
           python -c "import sys; from what_number.demo import write_sample_kitchen_log; write_sample_kitchen_log(sys.argv[1])" $logs
           Set-Content -Path empty_log.txt -Value "" -NoNewline
-          $p = Start-Process -FilePath dist\what_number.exe -ArgumentList "--log", $logs, "--no-browser", "--port", "8719" `
+          $p = Start-Process -FilePath dist\what_number.exe -ArgumentList "--log", $logs, "--no-gui", "--web", "--no-browser", "--port", "8719" `
                  -RedirectStandardInput empty_log.txt -RedirectStandardOutput log_out.txt -PassThru -NoNewWindow
           $found = $null
           foreach ($i in 1..30) {

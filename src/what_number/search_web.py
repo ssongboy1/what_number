@@ -98,66 +98,107 @@ PAGE = """<!doctype html>
 </header>
 <main id="list"></main>
 <script>
-const $ = (id) => document.getElementById(id);
-let query = "";
-let skew = 0;  // 이 기기와 포스 PC 의 시계 차이
-let overview = { menus: [], recent: [] };
-let results = null;
+/* 포스 PC 의 옛날 브라우저(인터넷 익스플로러 등)에서도 돌아가도록 예전 문법만 쓴다.
+   화살표 함수, fetch, async 같은 요즘 문법을 쓰면 화면이 통째로 멈춘다. */
+window.onerror = function (message) {
+  var box = document.getElementById("warn");
+  if (box) { box.style.color = "#f87171"; box.textContent = "화면 오류: " + message; }
+  var dot = document.getElementById("dot");
+  if (dot) { dot.className = "dot off"; }
+  return false;
+};
 
-function now() { return Date.now() / 1000 + skew; }
+var query = "";
+var skew = 0;  /* 이 기기와 포스 PC 의 시계 차이 */
+var overview = { menus: [], recent: [] };
+var results = null;
+
+function $(id) { return document.getElementById(id); }
+function now() { return new Date().getTime() / 1000 + skew; }
+function two(value) { return (value < 10 ? "0" : "") + value; }
 function clock(ts) {
-  const d = new Date(ts * 1000);
-  return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  var d = new Date(ts * 1000);
+  return two(d.getHours()) + ":" + two(d.getMinutes());
 }
 function ago(ts) {
-  const min = Math.max(0, Math.floor((now() - ts) / 60));
+  var min = Math.max(0, Math.floor((now() - ts) / 60));
   return min < 1 ? "방금" : min + "분 전";
 }
+function age(ts) {
+  var min = (now() - ts) / 60;
+  return min <= 20 ? " fresh" : (min > 120 ? " old" : "");
+}
 function el(tag, cls, text) {
-  const node = document.createElement(tag);
-  if (cls) node.className = cls;
-  if (text !== undefined) node.textContent = text;
+  var node = document.createElement(tag);
+  if (cls) { node.className = cls; }
+  if (text !== undefined) { node.appendChild(document.createTextNode(text)); }
   return node;
 }
-function age(ts) {
-  const min = (now() - ts) / 60;
-  return min <= 20 ? " fresh" : (min > 120 ? " old" : "");
+function clear(node) { while (node.firstChild) { node.removeChild(node.firstChild); } }
+function normalize(text) { return String(text || "").replace(/\s+/g, "").toLowerCase(); }
+
+function ask(path, done) {
+  var xhr = new XMLHttpRequest();
+  xhr.open("GET", path, true);
+  xhr.onreadystatechange = function () {
+    if (xhr.readyState !== 4) { return; }
+    if (xhr.status === 200) {
+      var data = null;
+      try { data = JSON.parse(xhr.responseText); } catch (e) { data = null; }
+      if (data) { done(data); return; }
+    }
+    done(null);
+  };
+  xhr.send();
+}
+
+function chipClicked(menu) {
+  return function () { setQuery(normalize(menu) === normalize(query) ? "" : menu); };
 }
 
 function renderChips() {
-  const box = $("chips");
-  box.textContent = "";
-  for (const m of overview.menus) {
-    const chip = el("button", "chip" + (normalize(m.menu) === normalize(query) ? " on" : ""), m.menu);
+  var box = $("chips");
+  clear(box);
+  for (var i = 0; i < overview.menus.length; i++) {
+    var item = overview.menus[i];
+    var chip = el("button", "chip" + (normalize(item.menu) === normalize(query) ? " on" : ""), item.menu);
     chip.type = "button";
-    chip.appendChild(el("small", "", String(m.count)));
-    chip.onclick = () => { setQuery(normalize(m.menu) === normalize(query) ? "" : m.menu); };
+    chip.appendChild(el("small", "", String(item.count)));
+    chip.onclick = chipClicked(item.menu);
     box.appendChild(chip);
   }
 }
 
+function whenBox(ts) {
+  var box = el("div", "when");
+  box.appendChild(el("b", "", ago(ts)));
+  box.appendChild(document.createTextNode(clock(ts)));
+  return box;
+}
+
 function renderResults() {
-  const list = $("list");
-  list.textContent = "";
+  var list = $("list");
+  clear(list);
+  var i, card, body;
   if (query && results) {
     list.appendChild(el("div", "title", "'" + query + "' 주문한 테이블 " + results.length + "곳"));
     if (!results.length) {
-      list.appendChild(el("div", "empty", "오늘 이 메뉴를 주문한 테이블이 없습니다.\\n취소된 주문은 보이지 않습니다."));
+      list.appendChild(el("div", "empty", "오늘 이 메뉴를 주문한 테이블이 없습니다.
+취소된 주문은 보이지 않습니다."));
     }
-    for (const r of results) {
-      const card = el("div", "card" + age(r.printed_at));
-      card.appendChild(el("div", "table", r.table || "?"));
-      const body = el("div", "body");
-      const menu = el("div", "menu", r.menu);
-      if (r.qty > 1) menu.appendChild(el("span", "qty", "x" + r.qty));
+    for (i = 0; i < results.length; i++) {
+      var found = results[i];
+      card = el("div", "card" + age(found.printed_at));
+      card.appendChild(el("div", "table", found.table || "?"));
+      body = el("div", "body");
+      var menu = el("div", "menu", found.menu);
+      if (found.qty > 1) { menu.appendChild(el("span", "qty", "x" + found.qty)); }
       body.appendChild(menu);
-      const note = [r.options, r.kind === "추가" ? "추가 주문" : ""].filter(Boolean).join(" · ");
-      if (note) body.appendChild(el("div", "opt", note));
+      var note = found.options || "";
+      if (found.kind === "추가") { note = note ? note + " · 추가 주문" : "추가 주문"; }
+      if (note) { body.appendChild(el("div", "opt", note)); }
       card.appendChild(body);
-      const when = el("div", "when");
-      when.appendChild(el("b", "", ago(r.printed_at)));
-      when.appendChild(document.createTextNode(clock(r.printed_at)));
-      card.appendChild(when);
+      card.appendChild(whenBox(found.printed_at));
       list.appendChild(card);
     }
     return;
@@ -166,70 +207,71 @@ function renderResults() {
   if (!overview.recent.length) {
     list.appendChild(el("div", "empty", "오늘 들어온 주방 주문서가 아직 없습니다."));
   }
-  for (const t of overview.recent) {
-    const card = el("div", "card" + age(t.printed_at));
-    card.appendChild(el("div", "table", t.table || "?"));
-    const body = el("div", "body lines");
-    for (const i of t.items) {
-      const line = el("div");
-      const text = i.menu + (i.qty > 1 ? " x" + i.qty : "");
-      if (i.cancelled) { line.appendChild(el("s", "", text + " 취소")); } else { line.textContent = text; }
-      if (i.options) line.appendChild(el("span", "sub", " " + i.options));
+  for (i = 0; i < overview.recent.length; i++) {
+    var ticket = overview.recent[i];
+    card = el("div", "card" + age(ticket.printed_at));
+    card.appendChild(el("div", "table", ticket.table || "?"));
+    body = el("div", "body lines");
+    for (var k = 0; k < ticket.items.length; k++) {
+      var item = ticket.items[k];
+      var line = el("div");
+      var text = item.menu + (item.qty > 1 ? " x" + item.qty : "");
+      if (item.cancelled) { line.appendChild(el("s", "", text + " 취소")); }
+      else { line.appendChild(document.createTextNode(text)); }
+      if (item.options) { line.appendChild(el("span", "sub", " " + item.options)); }
       body.appendChild(line);
     }
     card.appendChild(body);
-    const when = el("div", "when");
-    when.appendChild(el("b", "", ago(t.printed_at)));
-    when.appendChild(document.createTextNode(clock(t.printed_at)));
-    card.appendChild(when);
+    card.appendChild(whenBox(ticket.printed_at));
     list.appendChild(card);
   }
 }
 
-function normalize(text) { return String(text || "").replace(/\\s+/g, "").toLowerCase(); }
-
 function setQuery(text) {
   $("q").value = text;
-  query = text.trim();
+  query = text.replace(/^\s+|\s+$/g, "");
   results = null;
   renderChips();
   search();
 }
 
-async function search() {
-  const asked = query;
+function search() {
+  var asked = query;
   if (!asked) { renderResults(); return; }
-  try {
-    const res = await fetch("/api/search?q=" + encodeURIComponent(asked));
-    const data = await res.json();
-    if (asked !== query) return;  // 그 사이 다른 글자를 쳤다
+  ask("/api/search?q=" + encodeURIComponent(asked), function (data) {
+    if (!data || asked !== query) { return; }  /* 그 사이 다른 글자를 쳤다 */
     results = data.results;
     renderResults();
-  } catch (e) { /* 다음 새로고침에서 다시 한다 */ }
+  });
 }
 
-async function refresh() {
-  try {
-    const res = await fetch("/api/overview");
-    const data = await res.json();
-    skew = data.now - Date.now() / 1000;
+function refresh() {
+  ask("/api/overview", function (data) {
+    if (!data) {
+      $("dot").className = "dot off";
+      $("status").textContent = "포스 PC 와 연결 끊김";
+      return;
+    }
+    skew = data.now - new Date().getTime() / 1000;
     overview = data;
-    const s = data.status || {};
-    $("dot").className = "dot" + (s.ok ? "" : " off");
-    $("status").textContent = s.ok
-      ? (data.summary.last_ticket_at ? "마지막 주문 " + clock(data.summary.last_ticket_at) : "주문 기다리는 중")
-      : "주방 기록을 못 읽는 중";
-    $("warn").textContent = (s.errors || []).join(" / ");
+    var state = data.status || {};
+    $("dot").className = "dot" + (state.ok ? "" : " off");
+    if (state.ok) {
+      $("status").textContent = data.summary.last_ticket_at
+        ? "마지막 주문 " + clock(data.summary.last_ticket_at)
+        : "주문 기다리는 중";
+    } else {
+      $("status").textContent = "주방 기록을 못 읽는 중";
+    }
+    $("warn").textContent = (state.errors || []).join(" / ");
     renderChips();
-    if (query) { await search(); } else { renderResults(); }
-  } catch (e) {
-    $("dot").className = "dot off";
-    $("status").textContent = "포스 PC 와 연결 끊김";
-  }
+    if (query) { search(); } else { renderResults(); }
+  });
 }
 
-$("q").addEventListener("input", () => { query = $("q").value.trim(); renderChips(); search(); });
-$("clear").onclick = () => { setQuery(""); $("q").focus(); };
+$("q").onkeyup = function () { setQuery($("q").value); };
+$("q").onchange = function () { setQuery($("q").value); };
+$("clear").onclick = function () { setQuery(""); $("q").focus(); };
 refresh();
 setInterval(refresh, 3000);
 </script>
