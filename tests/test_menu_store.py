@@ -74,6 +74,32 @@ class MenuStoreTest(unittest.TestCase):
         self.assertEqual(self.tables("토마토"), [("홀-2", "오븐 토마토 파스타", 1)])
         self.assertEqual(self.store.summary(DAY)["tickets"], 1)
 
+    def test_same_menu_is_one_line_even_if_a_printer_omits_the_options(self):
+        """프린터마다 주문서 내용이 조금씩 다르다. 한쪽은 옵션까지, 한쪽은 메뉴만 찍힌다."""
+        self.store.add(ticket("홀-3", "0200-0001", [("20. 비프 찹 스테이크", 1, ["순한맛"])], station="홀"))
+        self.store.add(ticket("홀-3", "0200-0001", [("20. 비프 찹 스테이크", 1, [])], station="가니"))
+        self.assertEqual([(r["menu"], r["qty"], r["options"]) for r in self.store.search("스테이크", DAY)],
+                         [("비프 찹 스테이크", 1, "순한맛")])
+
+    def test_options_fill_in_when_the_plain_copy_arrives_first(self):
+        self.store.add(ticket("홀-3", "0200-0001", [("20. 비프 찹 스테이크", 1, [])], station="가니"))
+        self.store.add(ticket("홀-3", "0200-0001", [("20. 비프 찹 스테이크", 1, ["순한맛"])], station="홀"))
+        self.assertEqual([(r["qty"], r["options"]) for r in self.store.search("스테이크", DAY)],
+                         [(1, "순한맛")])
+
+    def test_same_menu_with_different_options_stays_apart(self):
+        """순한맛 하나, 매운맛 하나를 시켰으면 두 줄로 남아야 한다."""
+        self.store.add(ticket("홀-5", "0201-0001", [
+            ("20. 비프 찹 스테이크", 1, ["순한맛"]), ("20. 비프 찹 스테이크", 1, ["매운맛"])]))
+        self.assertEqual([r["options"] for r in self.store.search("스테이크", DAY)],
+                         ["순한맛", "매운맛"])
+
+    def test_a_printer_that_shows_a_bigger_quantity_wins(self):
+        self.store.add(ticket("홀-6", "0202-0001", [("49. 빠네 크림 파스타", 1, [])], station="가니"))
+        self.store.add(ticket("홀-6", "0202-0001", [("49. 빠네 크림 파스타", 3, ["크림 소스 추가"])], station="홀"))
+        self.assertEqual([(r["qty"], r["options"]) for r in self.store.search("빠네", DAY)],
+                         [(3, "크림 소스 추가")])
+
     def test_printers_with_different_menus_are_merged(self):
         self.store.add(ticket("홀-3", "0005-0001", [("43. 오븐 토마토 파스타", 1, [])], station="파스타"))
         self.store.add(ticket("홀-3", "0005-0001", [("12. 마르게리따 피자", 1, [])], station="피자"))

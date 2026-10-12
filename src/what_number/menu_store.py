@@ -7,7 +7,6 @@
 
 from __future__ import annotations
 
-import collections
 import re
 import sqlite3
 import threading
@@ -120,6 +119,29 @@ def _split(quantity: int, cancelled: int, show_cancelled: bool) -> list:
     return [(left, False), (cancelled, True)]
 
 
+def _match_line(rows: list, used: set, menu: str, options: str, is_cancel: bool):
+    """이번 주문서의 한 줄이, 이미 저장된 어느 줄과 같은 것인지 고른다.
+
+    같은 주문서가 프린터마다 한 장씩 오는데 내용이 조금씩 다르다. 그래서 메뉴 이름으로
+    먼저 맞추고, 옵션은 같은 것 -> 옵션이 비어 있는 것 순으로 고른다. 옵션이 서로 다르면
+    (순한맛/매운맛) 다른 줄로 본다. 한 주문서에 같은 메뉴가 두 줄이면 각각 다른 줄에 붙는다.
+    """
+    same = [row for row in rows
+            if row["id"] not in used and row["menu"] == menu
+            and (row["quantity"] < 0) == is_cancel]
+    if not same:
+        return None
+    for row in same:
+        if row["options"] == options:
+            return row
+    if not options:
+        return same[0]  # 이번에는 메뉴만 찍혔다. 이미 있는 줄과 같은 것으로 본다
+    for row in same:
+        if not row["options"]:
+            return row  # 메뉴만 적혀 있던 줄에 옵션을 채운다
+    return None  # 옵션이 서로 다르다. 따로 시킨 것으로 본다
+
+
 class MenuStore:
     def __init__(self, path, retention_hours: float = 48.0):
         self.path = str(path)
@@ -173,35 +195,60 @@ class MenuStore:
                         (",".join(stations + [ticket.station]), ticket_id),
                     )
 
-            have = collections.Counter()
-            for item in self._conn.execute(
-                "SELECT menu, options, quantity FROM items WHERE ticket_id = ?", (ticket_id,)
-            ):
-                have[(item["menu"], item["options"], item["quantity"] < 0)] += abs(item["quantity"])
+            rows = [dict(item) for item in self._conn.execute(
+                "SELECT id, menu, options, quantity FROM items WHERE ticket_id = ?", (ticket_id,))]
+            used = set()
 
-            wanted = collections.Counter()
-            codes = {}
             for line in ticket.lines:
-                key = (line.menu, ", ".join(line.options), line.quantity < 0)
-                wanted[key] += abs(line.quantity)
-                codes[key] = line.code
-
-            for key, count in wanted.items():
-                missing = count - have[key]
-                if missing <= 0:
+                options = ", ".join(line.options)
+                is_cancel = line.quantity < 0
+                count = abs(line.quantity)
+                found = _match_line(rows, used, line.menu, options, is_cancel)
+                if found is not None:
+                    used.add(found["id"])
+                    more = self._fill_in(found, options, count)
+                    if more and is_cancel:
+                        self._cancel(day, base, ticket.table, line.menu, more)
+                    if more:
+                        added.append((line.menu, -more if is_cancel else more, options))
                     continue
-                menu, options, is_cancel = key
-                quantity = -missing if is_cancel else missing
-                self._conn.execute(
+
+                quantity = -count if is_cancel else count
+                item_id = self._conn.execute(
                     "INSERT INTO items (ticket_id, menu, menu_key, code, options, option_key,"
                     " menu_keys, option_keys, quantity) VALUES (?,?,?,?,?,?,?,?,?)",
-                    (ticket_id, menu, normalize(menu), codes[key], options, normalize(options),
-                     keystrokes(menu), keystrokes(options), quantity),
-                )
+                    (ticket_id, line.menu, normalize(line.menu), line.code, options,
+                     normalize(options), keystrokes(line.menu), keystrokes(options), quantity),
+                ).lastrowid
+                rows.append({"id": item_id, "menu": line.menu, "options": options,
+                             "quantity": quantity})
+                used.add(item_id)
                 if is_cancel:
-                    self._cancel(day, base, ticket.table, menu, missing)
-                added.append((menu, quantity, options))
+                    self._cancel(day, base, ticket.table, line.menu, count)
+                added.append((line.menu, quantity, options))
         return added
+
+    def _fill_in(self, row: dict, options: str, count: int) -> int:
+        """이미 있는 줄을 이번 주문서 내용으로 채운다. 늘어난 수량을 돌려준다.
+
+        프린터마다 주문서 내용이 조금씩 다르다. 한쪽은 옵션까지 찍히고 다른 쪽은
+        메뉴만 찍히는 식이다. 비어 있던 옵션은 채우고, 수량은 많은 쪽을 따른다.
+        """
+        changes, params = [], []
+        if options and not row["options"]:
+            changes += ["options = ?", "option_key = ?", "option_keys = ?"]
+            params += [options, normalize(options), keystrokes(options)]
+            row["options"] = options
+        more = count - abs(row["quantity"])
+        if more > 0:
+            quantity = -count if row["quantity"] < 0 else count
+            changes.append("quantity = ?")
+            params.append(quantity)
+            row["quantity"] = quantity
+        if changes:
+            self._conn.execute(
+                "UPDATE items SET " + ", ".join(changes) + " WHERE id = ?", params + [row["id"]])
+        return max(0, more)
 
     def _cancel(self, day: str, base: str, table: str, menu: str, count: int) -> None:
         """같은 주문의 같은 메뉴에서 수량을 뺀다. 나중에 들어온 것부터."""

@@ -2,6 +2,9 @@
 
 이 문서는 이 저장소에서 작업을 이어받는 사람이나 AI 를 위한 것입니다.
 
+> **먼저 `작업내역.md` 를 읽으세요.** 지금 무엇이 어떻게 돌아가는지, 다음에 할 일이
+> 한 장으로 정리돼 있습니다. 이 문서는 그 뒤의 자세한 배경과 밟았던 함정입니다.
+
 ## 무엇을 만드는 중인가
 
 음식점에서 **음식이 나왔는데 몇 번 테이블 것인지 모를 때**, 포스기에서 테이블을
@@ -104,7 +107,7 @@ src/what_number/
 ## 개발
 
 ```bash
-PYTHONPATH=src python -m unittest discover -s tests   # 테스트 (현재 251건)
+PYTHONPATH=src python -m unittest discover -s tests   # 테스트 (현재 255건)
 PYTHONPATH=src python -m what_number --demo           # 포스 없이 화면 확인
 PYTHONPATH=src python -m what_number --replay 파일.bin  # 인쇄 원본으로 인식 시험
 PYTHONPATH=src python -m what_number --diagnose       # 이 PC 의 프린터 연결 방식 조사
@@ -243,6 +246,12 @@ exe 는 `.github/workflows/build-exe.yml` 이 윈도우에서 자동으로 만�
 - 사용자가 메뉴 버튼(칩)을 필요 없다고 해서 없앴다. 다시 넣지 말 것.
 - 검은 창은 더블클릭으로 켰을 때만 숨긴다. exe 는 껍데기+본체 두 프로세스가 같은 창을 쓰므로
   `GetConsoleProcessList` 가 2 이하일 때 숨긴다(명령창에서 실행하면 3 이상이라 그대로 둔다).
+
+**2026-10-12 같은 메뉴가 여러 줄로 나오던 문제.** 사용자가 검색했더니 같은 메뉴가
+옵션 있는 줄과 없는 줄로 따로 나왔다. 저장할 때 열쇠가 (메뉴, 옵션) 이어서, 프린터마다
+주문서 내용이 다르면(한쪽은 옵션까지, 한쪽은 메뉴만) 서로 다른 줄이 됐다.
+`menu_store._match_line` 이 메뉴로 먼저 맞추고 옵션은 채워 넣게 고쳤다.
+옵션이 서로 다르면(순한맛/매운맛) 따로 둔다. 수량은 많은 쪽을 따른다.
 
 **아직 확인 안 된 것**
 - 매장 포스 PC 에서 로그 폴더의 정확한 위치. 자동으로 찾게 했지만 실물로 확인할 것
