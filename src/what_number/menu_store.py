@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS tickets (
     stations    TEXT    NOT NULL DEFAULT '',
     printed_at  REAL    NOT NULL
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_ticket_key  ON tickets(day, order_no);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ticket_spot ON tickets(day, order_no, table_label, pos_no);
 CREATE INDEX        IF NOT EXISTS idx_ticket_time ON tickets(day, printed_at);
 
 CREATE TABLE IF NOT EXISTS items (
@@ -119,27 +119,56 @@ def _split(quantity: int, cancelled: int, show_cancelled: bool) -> list:
     return [(left, False), (cancelled, True)]
 
 
-def _match_line(rows: list, used: set, menu: str, options: str, is_cancel: bool):
-    """이번 주문서의 한 줄이, 이미 저장된 어느 줄과 같은 것인지 고른다.
+def _group(lines: list) -> list:
+    """같은 메뉴·같은 부호(주문/취소)끼리 묶는다. 주문서에 적힌 순서는 지킨다.
 
-    같은 주문서가 프린터마다 한 장씩 오는데 내용이 조금씩 다르다. 그래서 메뉴 이름으로
-    먼저 맞추고, 옵션은 같은 것 -> 옵션이 비어 있는 것 순으로 고른다. 옵션이 서로 다르면
-    (순한맛/매운맛) 다른 줄로 본다. 한 주문서에 같은 메뉴가 두 줄이면 각각 다른 줄에 붙는다.
+    프린터마다 같은 메뉴를 한 줄(2개)로 찍기도 하고 두 줄(1개씩)로 찍기도 한다.
+    줄 하나씩 맞추면 수량이 부풀기 때문에, 메뉴별 합계로 비교하려고 묶는다.
     """
-    same = [row for row in rows
-            if row["id"] not in used and row["menu"] == menu
-            and (row["quantity"] < 0) == is_cancel]
-    if not same:
-        return None
-    for row in same:
+    groups, order = {}, []
+    for line in lines:
+        key = (line.menu, line.quantity < 0)
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(line)
+    return [(key, groups[key]) for key in order]
+
+
+def _parts(options: str) -> list:
+    return [part for part in (piece.strip() for piece in str(options or "").split(",")) if part]
+
+
+def _fits(stored: str, fresh: str) -> bool:
+    """두 옵션 표기가 같은 줄의 것일 수 있는가.
+
+    프린터마다 자기와 상관있는 옵션만 찍는 일이 있다. 그래서 한쪽이 다른 쪽에 들어가면
+    같은 줄로 본다. 순한맛/매운맛처럼 겹치지 않으면 따로 시킨 것으로 본다.
+    """
+    old, new = set(_parts(stored)), set(_parts(fresh))
+    return old <= new or new <= old
+
+
+def _union(stored: str, fresh: str) -> str:
+    """두 옵션 표기를 합친다. 한쪽이 다른 쪽을 품으면 품은 쪽의 순서를 그대로 쓴다."""
+    old, new = _parts(stored), _parts(fresh)
+    if set(old) <= set(new):
+        return ", ".join(new)
+    if set(new) <= set(old):
+        return ", ".join(old)
+    return ", ".join(old + [part for part in new if part not in old])
+
+
+def _pick(rows: list, used: set, options: str):
+    """이번 주문서의 한 줄이, 이미 저장된 어느 줄과 같은 것인지 고른다."""
+    free = [row for row in rows if row["id"] not in used]
+    for row in free:
         if row["options"] == options:
             return row
-    if not options:
-        return same[0]  # 이번에는 메뉴만 찍혔다. 이미 있는 줄과 같은 것으로 본다
-    for row in same:
-        if not row["options"]:
-            return row  # 메뉴만 적혀 있던 줄에 옵션을 채운다
-    return None  # 옵션이 서로 다르다. 따로 시킨 것으로 본다
+    for row in free:
+        if _fits(row["options"], options):
+            return row
+    return None
 
 
 class MenuStore:
@@ -151,13 +180,32 @@ class MenuStore:
             Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(self.path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
+        self._speed_up()
         with self._lock:
             self._conn.executescript(_SCHEMA)
             self._add_missing_columns()
             self._conn.commit()
 
+    def _speed_up(self) -> None:
+        """기록을 WAL 로 남긴다. 켤 때 지난 주문을 읽는 시간이 크게 줄어든다.
+
+        기본 설정은 주문서 한 장마다 디스크에 다 썼는지 기다린다(한 장에 8ms 쯤).
+        바쁜 하루치 1500장을 한꺼번에 읽을 때 13초가 걸렸고, 그동안 창이 뜨지 않았다.
+        이 파일은 우리만 쓰는 것이고 48시간치 임시 기록이라 이렇게 해도 잃을 것이 없다.
+        (전원이 꺼져 마지막 몇 장을 잃으면, 어디까지 읽었는지도 같이 되돌아가 다시 읽는다)
+        """
+        if self.path == ":memory:":
+            return
+        try:
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA synchronous=NORMAL")
+        except sqlite3.Error:
+            pass  # 되지 않는 곳(네트워크 드라이브 등)에서는 그냥 기본 방식으로 쓴다
+
     def _add_missing_columns(self) -> None:
         """예전에 만든 파일에 새 칸을 더한다. 다시 켜도 오늘 주문이 그대로 남아 있도록."""
+        # 예전에는 (영업일, 주문번호) 로만 묶었다. 테이블·포스번호까지 보도록 바꾼다
+        self._conn.execute("DROP INDEX IF EXISTS idx_ticket_key")
         have = {row["name"] for row in self._conn.execute("PRAGMA table_info(items)")}
         for column in ("option_key", "menu_keys", "option_keys"):
             if column not in have:
@@ -176,96 +224,140 @@ class MenuStore:
         base = order_no.split("-")[0]
         added = []
         with self._lock, self._conn:
-            row = self._conn.execute(
-                "SELECT id, stations FROM tickets WHERE day = ? AND order_no = ?", (day, order_no)
-            ).fetchone()
-            if row is None:
-                ticket_id = self._conn.execute(
-                    "INSERT INTO tickets (day, order_no, order_base, table_label, kind, pos_no,"
-                    " stations, printed_at) VALUES (?,?,?,?,?,?,?,?)",
-                    (day, order_no, base, ticket.table, ticket.kind, ticket.pos_no,
-                     ticket.station, when),
-                ).lastrowid
-            else:
-                ticket_id = row["id"]
-                stations = [s for s in row["stations"].split(",") if s]
-                if ticket.station and ticket.station not in stations:
-                    self._conn.execute(
-                        "UPDATE tickets SET stations = ? WHERE id = ?",
-                        (",".join(stations + [ticket.station]), ticket_id),
-                    )
-
+            ticket_id = self._ticket_id(day, order_no, base, ticket)
             rows = [dict(item) for item in self._conn.execute(
                 "SELECT id, menu, options, quantity FROM items WHERE ticket_id = ?", (ticket_id,))]
             used = set()
-
-            for line in ticket.lines:
-                options = ", ".join(line.options)
-                is_cancel = line.quantity < 0
-                count = abs(line.quantity)
-                found = _match_line(rows, used, line.menu, options, is_cancel)
-                if found is not None:
-                    used.add(found["id"])
-                    more = self._fill_in(found, options, count)
-                    if more and is_cancel:
-                        self._cancel(day, base, ticket.table, line.menu, more)
-                    if more:
-                        added.append((line.menu, -more if is_cancel else more, options))
-                    continue
-
-                quantity = -count if is_cancel else count
-                item_id = self._conn.execute(
-                    "INSERT INTO items (ticket_id, menu, menu_key, code, options, option_key,"
-                    " menu_keys, option_keys, quantity) VALUES (?,?,?,?,?,?,?,?,?)",
-                    (ticket_id, line.menu, normalize(line.menu), line.code, options,
-                     normalize(options), keystrokes(line.menu), keystrokes(options), quantity),
-                ).lastrowid
-                rows.append({"id": item_id, "menu": line.menu, "options": options,
-                             "quantity": quantity})
-                used.add(item_id)
-                if is_cancel:
-                    self._cancel(day, base, ticket.table, line.menu, count)
-                added.append((line.menu, quantity, options))
+            for (menu, is_cancel), lines in _group(ticket.lines):
+                added += self._merge_menu(ticket_id, rows, used, menu, is_cancel, lines,
+                                          day, base, ticket.table, ticket.pos_no)
         return added
 
-    def _fill_in(self, row: dict, options: str, count: int) -> int:
-        """이미 있는 줄을 이번 주문서 내용으로 채운다. 늘어난 수량을 돌려준다.
+    def _ticket_id(self, day: str, order_no: str, base: str, ticket) -> int:
+        """이 주문서가 들어갈 자리를 찾거나 만든다. 이미 있으면 프린터 이름만 더한다.
 
-        프린터마다 주문서 내용이 조금씩 다르다. 한쪽은 옵션까지 찍히고 다른 쪽은
-        메뉴만 찍히는 식이다. 비어 있던 옵션은 채우고, 수량은 많은 쪽을 따른다.
+        주문번호만으로 묶으면 안 된다. 포스가 자정에 번호를 1번부터 다시 매기면 새벽 주문이
+        같은 영업일의 낮 주문과 겹치고, 포스가 여러 대면 대수만큼 번호가 겹친다.
+        테이블과 포스번호까지 같아야 같은 주문서로 본다.
         """
-        changes, params = [], []
-        if options and not row["options"]:
-            changes += ["options = ?", "option_key = ?", "option_keys = ?"]
-            params += [options, normalize(options), keystrokes(options)]
-            row["options"] = options
-        more = count - abs(row["quantity"])
-        if more > 0:
-            quantity = -count if row["quantity"] < 0 else count
-            changes.append("quantity = ?")
-            params.append(quantity)
-            row["quantity"] = quantity
-        if changes:
-            self._conn.execute(
-                "UPDATE items SET " + ", ".join(changes) + " WHERE id = ?", params + [row["id"]])
-        return max(0, more)
+        row = self._conn.execute(
+            "SELECT id, stations FROM tickets"
+            " WHERE day = ? AND order_no = ? AND table_label = ? AND pos_no = ?",
+            (day, order_no, ticket.table, ticket.pos_no),
+        ).fetchone()
+        if row is None:
+            return self._conn.execute(
+                "INSERT INTO tickets (day, order_no, order_base, table_label, kind, pos_no,"
+                " stations, printed_at) VALUES (?,?,?,?,?,?,?,?)",
+                (day, order_no, base, ticket.table, ticket.kind, ticket.pos_no,
+                 ticket.station, ticket.when),
+            ).lastrowid
+        stations = [name for name in row["stations"].split(",") if name]
+        if ticket.station and ticket.station not in stations:
+            self._conn.execute("UPDATE tickets SET stations = ? WHERE id = ?",
+                               (",".join(stations + [ticket.station]), row["id"]))
+        return row["id"]
 
-    def _cancel(self, day: str, base: str, table: str, menu: str, count: int) -> None:
-        """같은 주문의 같은 메뉴에서 수량을 뺀다. 나중에 들어온 것부터."""
-        rows = self._conn.execute(
+    def _merge_menu(self, ticket_id: int, rows: list, used: set, menu: str, is_cancel: bool,
+                    lines: list, day: str, base: str, table: str, pos_no: str = "") -> list:
+        """한 메뉴의 줄들을 이미 저장된 것과 맞춘다. 새로 더해진 것만 돌려준다.
+
+        수량은 많이 찍힌 주문서를 따르되 **메뉴별 합계**로 비교한다. 한 장은 1개씩 두 줄,
+        다른 장은 2개 한 줄로 찍혀도 3개가 되지 않게 하기 위해서다.
+        """
+        mine = [row for row in rows if row["menu"] == menu and (row["quantity"] < 0) == is_cancel]
+        stored = sum(abs(row["quantity"]) for row in mine)
+        missing = sum(abs(line.quantity) for line in lines) - stored
+        added, leftover, touched = [], [], []
+
+        for line in lines:
+            options = ", ".join(line.options)
+            found = _pick(mine, used, options)
+            if found is None:
+                leftover.append((line, options))
+            else:
+                used.add(found["id"])
+                touched.append(found)
+                self._set_options(found, _union(found["options"], options))
+
+        fresh = 0
+        for line, options in leftover:
+            if missing > 0:  # 이 주문서에만 있는 수량이다. 줄을 새로 만든다
+                count = min(abs(line.quantity), missing)
+                row = self._insert(ticket_id, line, options, -count if is_cancel else count)
+                rows.append(row)
+                mine.append(row)
+                used.add(row["id"])
+                added.append((menu, row["quantity"], options))
+                missing -= count
+                fresh += count
+            else:
+                # 수량은 이미 다 들어와 있다. 프린터마다 자기 옵션만 찍은 것으로 보고 채운다
+                target = touched[0] if touched else (mine[0] if mine else None)
+                if target is not None:
+                    self._set_options(target, _union(target["options"], options))
+        if missing > 0 and touched:  # 같은 줄인데 수량이 늘었다(한 장은 1개, 다른 장은 2개)
+            row = touched[0]
+            total = abs(row["quantity"]) + missing
+            self._set_quantity(row, -total if is_cancel else total)
+            added.append((menu, -missing if is_cancel else missing, row["options"]))
+            fresh += missing
+
+        if is_cancel and fresh:
+            self._cancel(day, base, table, menu, fresh, pos_no)
+        return added
+
+    def _insert(self, ticket_id: int, line, options: str, quantity: int) -> dict:
+        item_id = self._conn.execute(
+            "INSERT INTO items (ticket_id, menu, menu_key, code, options, option_key,"
+            " menu_keys, option_keys, quantity) VALUES (?,?,?,?,?,?,?,?,?)",
+            (ticket_id, line.menu, normalize(line.menu), line.code, options,
+             normalize(options), keystrokes(line.menu), keystrokes(options), quantity),
+        ).lastrowid
+        return {"id": item_id, "menu": line.menu, "options": options, "quantity": quantity}
+
+    def _set_options(self, row: dict, options: str) -> None:
+        if options == row["options"]:
+            return
+        self._conn.execute(
+            "UPDATE items SET options = ?, option_key = ?, option_keys = ? WHERE id = ?",
+            (options, normalize(options), keystrokes(options), row["id"]))
+        row["options"] = options
+
+    def _set_quantity(self, row: dict, quantity: int) -> None:
+        self._conn.execute("UPDATE items SET quantity = ? WHERE id = ?", (quantity, row["id"]))
+        row["quantity"] = quantity
+
+    def _cancel(self, day: str, base: str, table: str, menu: str, count: int,
+                pos_no: str = "") -> None:
+        """같은 주문의 같은 메뉴에서 수량을 뺀다. 나중에 들어온 것부터.
+
+        포스가 여러 대면 주문번호가 겹칠 수 있다. 그래서 취소 주문서를 찍은 포스의 주문에서
+        먼저 빼고, 거기에 없으면(다른 포스에서 취소한 경우) 포스를 가리지 않고 찾는다.
+        남의 주문을 잘못 지우는 것이, 취소된 메뉴가 남아 있는 것보다 나쁘기 때문이다.
+        """
+        query = (
             "SELECT i.id, i.quantity - i.cancelled AS left FROM items i"
             " JOIN tickets t ON t.id = i.ticket_id"
             " WHERE t.day = ? AND t.order_base = ? AND t.table_label = ? AND i.menu = ?"
             "   AND i.quantity > 0 AND i.quantity > i.cancelled"
-            " ORDER BY t.printed_at DESC, i.id DESC",
-            (day, base, table, menu),
-        ).fetchall()
-        for row in rows:
+        )
+        order = " ORDER BY t.printed_at DESC, i.id DESC"
+        for same_pos in ([True, False] if pos_no else [False]):
             if count <= 0:
-                break
-            take = min(count, row["left"])
-            self._conn.execute("UPDATE items SET cancelled = cancelled + ? WHERE id = ?", (take, row["id"]))
-            count -= take
+                return
+            params = [day, base, table, menu]
+            where = query
+            if same_pos:
+                where += " AND t.pos_no = ?"
+                params.append(pos_no)
+            for row in self._conn.execute(where + order, params).fetchall():
+                if count <= 0:
+                    break
+                take = min(count, row["left"])
+                self._conn.execute(
+                    "UPDATE items SET cancelled = cancelled + ? WHERE id = ?", (take, row["id"]))
+                count -= take
 
     # --- 찾기 ---
     def search(self, query: str, day: str | None = None, limit: int = 80,

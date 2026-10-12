@@ -9,6 +9,7 @@ import sys
 import threading
 import time
 import webbrowser
+import zlib
 from datetime import datetime
 from pathlib import Path
 
@@ -221,6 +222,49 @@ KITCHEN_LOG_HELP = r"""
 """
 
 
+# gui.SearchWindow 가 다는 창 이름. 이미 떠 있는 창을 찾을 때 쓴다
+WINDOW_TITLE = "몇번인가요 - 메뉴로 테이블 찾기"
+
+_HELD = []  # 이름표(뮤텍스)를 프로그램이 꺼질 때까지 쥐고 있어야 한다
+
+
+def _claim_single_run(tag: str) -> bool:
+    """같은 저장소를 쓰는 프로그램이 아직 안 켜져 있으면 참.
+
+    사용자가 더블클릭을 두 번 하는 일이 흔하다(창이 뜨기 전에 한 번 더 누른다).
+    두 번 켜지면 창이 두 개 뜨고 같은 기록을 두 곳에서 읽는다. 윈도우 이름표로 막는다.
+    프로그램이 죽어도 이름표는 같이 사라지므로 다시 켜는 데 걸림돌이 되지 않는다.
+    """
+    if os.name != "nt":
+        return True
+    try:
+        name = "Local\\whatnumber_%08x" % (zlib.crc32(tag.encode("utf-8")) & 0xFFFFFFFF)
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.CreateMutexW(None, False, name)
+        if not handle:
+            return True  # 이름표를 못 만들면 막지 않는다
+        _HELD.append(handle)
+        return kernel32.GetLastError() != 183  # ERROR_ALREADY_EXISTS
+    except Exception:
+        return True
+
+
+def _raise_window(title: str = "") -> bool:
+    """이미 떠 있는 우리 창을 앞으로 가져온다."""
+    if os.name != "nt":
+        return False
+    try:
+        user32 = ctypes.windll.user32
+        handle = user32.FindWindowW(None, title or WINDOW_TITLE)
+        if not handle:
+            return False
+        user32.ShowWindow(handle, 9)  # SW_RESTORE
+        user32.SetForegroundWindow(handle)
+        return True
+    except Exception:
+        return False
+
+
 def _console_window():
     """이 프로그램만 쓰는 검은 창. 숨겨도 되는 창이면 그 창을, 아니면 None.
 
@@ -308,6 +352,15 @@ def watch_kitchen_log(cfg: config_module.Config, folder: str | None = None,
         pause()
         return code
 
+    database = Path(store_path) if store_path else cfg.data_dir / "menus.db"
+    if not _claim_single_run(str(database)):
+        if use_gui and _raise_window():
+            return 0  # 이미 떠 있는 창을 앞으로 가져왔다. 검은 창은 띄우지 않는다
+        print()
+        print("  이 프로그램이 이미 켜져 있습니다.")
+        print("  이미 열려 있는 '몇번인가요' 창에서 메뉴를 검색하세요.")
+        return with_console(0)
+
     target = Path(folder) if folder else (Path(cfg.kitchen_log_dir) if cfg.kitchen_log_dir else None)
     if target is None:
         print("  포스의 주방 기록 파일을 찾는 중입니다...")
@@ -318,12 +371,11 @@ def watch_kitchen_log(cfg: config_module.Config, folder: str | None = None,
         print(KITCHEN_LOG_HELP)
         return with_console(1)
 
-    store = MenuStore(store_path or cfg.data_dir / "menus.db", retention_hours=cfg.retention_hours)
-    caught_up = threading.Event()
+    store = MenuStore(database, retention_hours=cfg.retention_hours)
 
     def on_ticket(ticket) -> None:
         added = store.add(ticket)
-        if not caught_up.is_set() or not added:
+        if not follower.caught_up or not added:
             return  # 켤 때 오늘 것을 한꺼번에 읽는 동안은 하나하나 찍지 않는다
         menus = ", ".join(
             menu
@@ -333,9 +385,10 @@ def watch_kitchen_log(cfg: config_module.Config, folder: str | None = None,
         )
         print(f"  {datetime.fromtimestamp(ticket.when):%H:%M:%S}  {ticket.table or '?':<6} {menus}")
 
+    # 지난 주문은 백그라운드에서 읽는다. 여기서 다 읽고 나서 창을 띄우면,
+    # 바쁜 하루 중간에 켰을 때 창이 뜨기까지 한참 아무것도 보이지 않는다.
     follower = LogFollower(target, on_ticket, offsets=store)
-    follower.poll()
-    caught_up.set()
+    follower.start()
 
     window = None
     if use_gui:
@@ -369,14 +422,13 @@ def watch_kitchen_log(cfg: config_module.Config, folder: str | None = None,
             if window is None:
                 store.close()
                 return with_console(1)
-    follower.start()
-
     summary = store.summary()
     print("=" * 62)
     print("  몇번인가요 - 메뉴로 테이블 찾기")
     print("=" * 62)
     print(f"  주방 기록 폴더 : {target}")
-    print(f"  오늘 주문서    : {summary['tickets']}장")
+    print(f"  오늘 주문서    : {summary['tickets']}장"
+          + ("" if follower.caught_up else " (지난 주문을 읽는 중)"))
     if window is not None:
         print("  화면           : 따로 뜬 창에서 메뉴를 검색하세요")
     if httpd is not None:

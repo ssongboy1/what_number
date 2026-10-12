@@ -27,7 +27,7 @@ import re
 import threading
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import escpos
@@ -150,7 +150,10 @@ def _items(rows: list) -> list:
         name = join_name(pending, found.group("name").strip(), spaced).strip()
         pending = ""
         quantity = int(found.group("qty"))
-        if name.startswith("▶"):
+        kind = found.group("kind")
+        if kind == "취소" and quantity > 0:
+            quantity = -quantity  # 취소 줄은 빼는 것이다. 포스가 부호 없이 찍어도 빼야 한다
+        if name.startswith("▶") or kind == "옵션":
             if lines:
                 lines[-1].options.append(name.lstrip("▶").strip())
             continue
@@ -267,13 +270,28 @@ def find_log_folder(roots=None, depth: int = SEARCH_DEPTH) -> Path | None:
     return Path(best[1]) if best else None
 
 
-def log_files(folder) -> list:
-    """폴더의 주방 기록 파일. 날짜 순."""
+def log_files(folder, today=None) -> list:
+    """폴더의 주방 기록 파일. 날짜 순.
+
+    포스 PC 의 시계가 한때 틀어져 있으면 미래 날짜 파일이 남는다. 그 파일이 가장 최근 것으로
+    보이면 더는 늘지 않는 파일만 쳐다보게 되어, 주문이 하나도 안 뜨면서 오류도 안 난다.
+    그래서 내일보다 뒤인 파일은 빼놓는다. 다만 그런 파일만 있으면(시계가 아예 앞서 있으면)
+    그대로 쓴다.
+    """
     try:
         names = [entry.name for entry in os.scandir(str(folder)) if entry.is_file()]
     except OSError:
         return []
-    return [Path(str(folder)) / name for name in sorted(names, key=str.lower) if _FILE_NAME.match(name)]
+    dated = []
+    for name in sorted(names, key=str.lower):
+        found = _FILE_NAME.match(name)
+        if found:
+            dated.append((found.group(1), Path(str(folder)) / name))
+    if not dated:
+        return []
+    limit = (today or datetime.now().date() + timedelta(days=1)).strftime("%Y%m%d")
+    sane = [path for stamp, path in dated if stamp <= limit]
+    return sane or [path for _stamp, path in dated]
 
 
 class LogFollower:
@@ -293,6 +311,7 @@ class LogFollower:
         self.errors = []
         self.last_read_at = None
         self.last_ticket_at = None
+        self.caught_up = False  # 켤 때 오늘 것을 다 읽었는가
         self._stop = threading.Event()
         self._thread = None
 
@@ -370,6 +389,7 @@ class LogFollower:
                 self.poll()
             except Exception as exc:
                 self._error(f"기록을 읽다가 문제가 생겼습니다: {exc}")
+            self.caught_up = True  # 한 바퀴 돌았으면 오늘 것은 다 읽었다
             self._stop.wait(self.poll_seconds)
 
     def stop(self) -> None:
@@ -389,5 +409,6 @@ class LogFollower:
             "file": self.current.name if self.current else "",
             "tickets": self.tickets,
             "last_ticket_at": self.last_ticket_at,
+            "caught_up": self.caught_up,
             "errors": self.errors[-3:],
         }

@@ -1,11 +1,13 @@
 """패킷 → 전표 → 화면 까지 실제 흐름 그대로 확인한다."""
 
 import json
+import os
 import socket
 import struct
 import unittest
 import urllib.request
 
+from what_number import app
 from what_number import config as config_module
 from what_number.app import Application
 from what_number.sniffer import parse_ipv4_tcp
@@ -214,6 +216,25 @@ class ConsoleEncodingTest(unittest.TestCase):
             result.returncode, 0, f"한글 출력에서 죽었다:\n{result.stderr.decode('utf-8', 'replace')}"
         )
         self.assertIn("B-0042", result.stdout.decode("utf-8", "replace"))
+
+
+class SingleRunTest(unittest.TestCase):
+    """더블클릭을 두 번 해도 프로그램이 두 번 켜지지 않아야 한다."""
+
+    @unittest.skipUnless(os.name == "nt", "윈도우에서만 쓰는 이름표")
+    def test_the_second_run_is_refused(self):
+        tag = r"C:\두번켜짐시험\menus.db"
+        self.assertTrue(app._claim_single_run(tag))
+        self.assertFalse(app._claim_single_run(tag))
+
+    @unittest.skipUnless(os.name == "nt", "윈도우에서만 쓰는 이름표")
+    def test_another_store_may_run(self):
+        """시험 모드(--demo)는 저장소가 달라서 같이 켤 수 있다."""
+        self.assertTrue(app._claim_single_run(r"C:\시험\a.db"))
+        self.assertTrue(app._claim_single_run(r"C:\시험\b.db"))
+
+    def test_raising_a_window_that_is_not_there_is_harmless(self):
+        self.assertFalse(app._raise_window("없는 창 이름 12345"))
 
 
 class DiagnoseTest(unittest.TestCase):

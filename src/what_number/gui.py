@@ -30,6 +30,7 @@ REFRESH_MS = 2000
 TABLE_COLUMN = "124p"  # 테이블 번호 칸의 너비
 LONG_TABLE = 8  # 이보다 넓은 이름('배달 배민원1')은 작은 글씨로 줄여 칸 안에 넣는다
 TYPING_MS = 120  # 글자를 친 뒤 목록을 다시 그리기까지 기다리는 시간
+SEARCH_LIMIT = 80  # 한 번에 보여주는 줄 수. 넘으면 최근 것부터 잘린다
 
 
 def elapsed(printed_at: float, now: float | None = None) -> str:
@@ -227,6 +228,12 @@ class SearchWindow:
 
     def _redraw(self) -> None:
         self._typing_job = None
+        try:
+            self._redraw_once()
+        except Exception as exc:
+            self._show_error(exc)
+
+    def _redraw_once(self) -> None:
         self.render(force=True)
 
     def set_query(self, text: str) -> None:
@@ -266,8 +273,12 @@ class SearchWindow:
         self.view.configure(state="normal")
         self.view.delete("1.0", "end")
         if self.query:
-            found = self.store.search(self.query, cancelled=cancelled)
-            self._write(f"'{self.query}' 주문한 테이블 {len(found)}곳\n", "title")
+            found = self.store.search(self.query, cancelled=cancelled, limit=SEARCH_LIMIT)
+            if len(found) >= SEARCH_LIMIT:
+                # 많이 나가는 메뉴는 잘린다. 몇 곳인지 세는 화면이 아니라서 최근 것만 보여준다
+                self._write(f"'{self.query}' 주문한 테이블 - 최근 {len(found)}곳\n", "title")
+            else:
+                self._write(f"'{self.query}' 주문한 테이블 {len(found)}곳\n", "title")
             if not found:
                 self._write("오늘 이 메뉴를 주문한 테이블이 없습니다.\n", "empty")
             for row in found:
@@ -300,10 +311,31 @@ class SearchWindow:
         self.view.configure(state="disabled")
 
     def refresh(self) -> None:
+        """2초마다 상태와 목록을 다시 본다.
+
+        무슨 일이 있어도 다음 번을 예약한다. 한 번 예외로 끊기면 창이 그대로 굳어서
+        주문이 들어와도 화면이 멈춘 것처럼 보이기 때문이다.
+        """
+        try:
+            self._refresh_once()
+        except Exception as exc:
+            self._show_error(exc)
+        finally:
+            self.root.after(REFRESH_MS, self.refresh)
+
+    def _show_error(self, exc) -> None:
+        try:
+            self.warn_label.configure(text="화면을 새로 그리지 못했습니다: %s" % exc)
+        except Exception:
+            pass
+
+    def _refresh_once(self) -> None:
         state = self.status_provider() or {}
         summary = self.store.summary()
         self.dot.configure(bg=FRESH if state.get("ok") else BAD)
-        if state.get("ok"):
+        if not state.get("caught_up", True):
+            self.state_label.configure(text="지난 주문을 읽는 중...")
+        elif state.get("ok"):
             last = summary.get("last_ticket_at")
             self.state_label.configure(text="마지막 주문 " + clock(last) if last else "주문 기다리는 중")
         else:

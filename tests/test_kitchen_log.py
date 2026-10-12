@@ -1,4 +1,6 @@
+import io
 import os
+import shutil
 import tempfile
 import unittest
 from datetime import datetime, timedelta
@@ -86,6 +88,37 @@ class ParseTicketTest(unittest.TestCase):
 
     def test_non_ticket_bytes(self):
         self.assertIsNone(kitchen_log.parse_ticket(b"\x1b@\n\n"))
+
+
+class OddTicketTest(unittest.TestCase):
+    """실물에서 본 모양과 조금 다르게 찍혀도 뜻을 잃지 않아야 한다."""
+
+    def parse(self, rows):
+        from what_number import escpos
+
+        body = "\r\n".join(rows) + "\r\n"
+        return kitchen_log.parse_ticket(body.encode(kitchen_log.ENCODING))
+
+    def test_a_cancel_line_without_a_minus_sign_still_subtracts(self):
+        found = self.parse([
+            "추가-주방주문서-홀", "[테이블] 홀-4", "[주문번호] 0004-0002",
+            "메뉴명              수량 구분", "-" * 42,
+            "34. 감바스 오일 파스타        1 취소",
+            "-" * 42, "POS-01                2026-09-22 17:30:00",
+        ])
+        self.assertEqual([(line.menu, line.quantity) for line in found.lines],
+                         [("감바스 오일 파스타", -1)])
+
+    def test_an_option_line_without_the_arrow_is_still_an_option(self):
+        found = self.parse([
+            "신규-주방주문서-홀", "[테이블] 홀-4", "[주문번호] 0005-0001",
+            "메뉴명              수량 구분", "-" * 42,
+            "20. 비프 찹 스테이크          1 신규",
+            "순한맛                        1 옵션",
+            "-" * 42, "POS-01                2026-09-22 17:30:00",
+        ])
+        self.assertEqual([(line.menu, line.quantity, line.options) for line in found.lines],
+                         [("비프 찹 스테이크", 1, ["순한맛"])])
 
 
 class ReadEntriesTest(unittest.TestCase):
@@ -211,6 +244,47 @@ class LogFollowerTest(unittest.TestCase):
         write_sample_kitchen_log(self.folder)
         follower = kitchen_log.LogFollower(self.folder, self.seen.append)
         self.assertEqual(follower.poll(), 8)  # 주문서 4장이 프린터 2대로
+
+
+class LogFilesTest(unittest.TestCase):
+    def setUp(self):
+        self.folder = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.folder, ignore_errors=True)
+
+    def write(self, name):
+        with io.open(os.path.join(self.folder, name), "wb") as out:
+            out.write(b"x")
+
+    def names(self):
+        return [path.name for path in kitchen_log.log_files(self.folder)]
+
+    def test_a_file_dated_in_the_future_is_left_out(self):
+        """포스 시계가 한때 틀어져 있었으면, 늘지 않는 파일만 쳐다보게 된다."""
+        today = datetime.now()
+        self.write("kitchenPrinter_trace_%s.log" % today.strftime("%Y%m%d"))
+        self.write("kitchenPrinter_trace_%s.log" % (today + timedelta(days=400)).strftime("%Y%m%d"))
+        self.assertEqual(self.names(),
+                         ["kitchenPrinter_trace_%s.log" % today.strftime("%Y%m%d")])
+
+    def test_tomorrow_is_allowed(self):
+        """자정 넘어 날짜가 바뀌는 순간을 막지 않는다."""
+        tomorrow = datetime.now() + timedelta(days=1)
+        name = "kitchenPrinter_trace_%s.log" % tomorrow.strftime("%Y%m%d")
+        self.write(name)
+        self.assertEqual(self.names(), [name])
+
+    def test_future_files_are_used_when_there_is_nothing_else(self):
+        """포스 시계가 아예 앞서 있으면 그 파일이라도 읽어야 한다."""
+        name = "kitchenPrinter_trace_%s.log" % (datetime.now() + timedelta(days=400)).strftime("%Y%m%d")
+        self.write(name)
+        self.assertEqual(self.names(), [name])
+
+    def test_other_files_are_ignored(self):
+        self.write("pos_trace_20260922.log")
+        self.write("kitchenPrinter_trace_20260922.log.bak")
+        self.assertEqual(self.names(), [])
 
 
 class FindLogFolderTest(unittest.TestCase):

@@ -13,9 +13,10 @@ NOW = datetime.now().replace(microsecond=0)
 DAY = business_day(NOW.timestamp())
 
 
-def ticket(table, order_no, items, kind="신규", station="홀", minutes_ago=0):
+def ticket(table, order_no, items, kind="신규", station="홀", minutes_ago=0, pos="POS-01"):
     when = NOW - timedelta(minutes=minutes_ago)
-    return kitchen_log.parse_ticket(kitchen_ticket(table, order_no, items, kind, station, when))
+    return kitchen_log.parse_ticket(
+        kitchen_ticket(table, order_no, items, kind, station, when, pos))
 
 
 class MenuStoreTest(unittest.TestCase):
@@ -195,6 +196,117 @@ class MenuStoreTest(unittest.TestCase):
         self.assertEqual(self.tables("%"), [])
         self.assertEqual(self.tables("_"), [])
         self.assertEqual(self.tables("   "), [])
+
+
+class MergeTest(unittest.TestCase):
+    """같은 주문서가 프린터마다 한 장씩 올 때 한 건으로 묶이는가."""
+
+    def setUp(self):
+        self.store = MenuStore(":memory:")
+
+    def tearDown(self):
+        self.store.close()
+
+    def lines(self, query):
+        return [(r["menu"], r["qty"], r["options"]) for r in self.store.search(query, DAY)]
+
+    def test_a_printer_that_shows_only_some_of_the_options(self):
+        """가니쉬 프린터는 가니쉬 옵션만 찍는다. 그래도 한 줄이어야 한다."""
+        self.store.add(ticket("홀-3", "0300-0001", [
+            ("20. 비프 찹 스테이크", 1, ["순한맛", "(약)"])], station="홀"))
+        self.store.add(ticket("홀-3", "0300-0001", [
+            ("20. 비프 찹 스테이크", 1, ["(약)"])], station="가니"))
+        self.assertEqual(self.lines("스테이크"), [("비프 찹 스테이크", 1, "순한맛, (약)")])
+
+    def test_the_shorter_option_list_may_arrive_first(self):
+        self.store.add(ticket("홀-3", "0300-0001", [
+            ("20. 비프 찹 스테이크", 1, ["(약)"])], station="가니"))
+        self.store.add(ticket("홀-3", "0300-0001", [
+            ("20. 비프 찹 스테이크", 1, ["순한맛", "(약)"])], station="홀"))
+        self.assertEqual(self.lines("스테이크"), [("비프 찹 스테이크", 1, "순한맛, (약)")])
+
+    def test_printers_that_each_show_their_own_option(self):
+        """그릴은 익힘 정도만, 가니쉬는 곁들이만 찍어도 한 줄로 모은다."""
+        self.store.add(ticket("홀-3", "0300-0001", [
+            ("20. 비프 찹 스테이크", 1, ["미디움"])], station="그릴"))
+        self.store.add(ticket("홀-3", "0300-0001", [
+            ("20. 비프 찹 스테이크", 1, ["감자튀김"])], station="가니"))
+        self.assertEqual(self.lines("스테이크"), [("비프 찹 스테이크", 1, "미디움, 감자튀김")])
+
+    def test_two_lines_of_one_and_one_line_of_two_make_two(self):
+        """한 프린터는 1개씩 두 줄, 다른 프린터는 2개 한 줄로 찍어도 3개가 되면 안 된다."""
+        self.store.add(ticket("홀-4", "0301-0001", [
+            ("49. 빠네 크림 파스타", 1, []), ("49. 빠네 크림 파스타", 1, [])], station="홀"))
+        self.store.add(ticket("홀-4", "0301-0001", [
+            ("49. 빠네 크림 파스타", 2, [])], station="가니"))
+        self.assertEqual(sum(qty for _menu, qty, _options in self.lines("빠네")), 2)
+
+    def test_the_single_line_copy_may_arrive_first(self):
+        self.store.add(ticket("홀-4", "0301-0001", [
+            ("49. 빠네 크림 파스타", 2, [])], station="가니"))
+        self.store.add(ticket("홀-4", "0301-0001", [
+            ("49. 빠네 크림 파스타", 1, []), ("49. 빠네 크림 파스타", 1, [])], station="홀"))
+        self.assertEqual(sum(qty for _menu, qty, _options in self.lines("빠네")), 2)
+
+    def test_a_really_bigger_quantity_is_still_followed(self):
+        self.store.add(ticket("홀-4", "0301-0001", [("49. 빠네 크림 파스타", 1, [])], station="홀"))
+        self.store.add(ticket("홀-4", "0301-0001", [("49. 빠네 크림 파스타", 3, [])], station="가니"))
+        self.assertEqual(sum(qty for _menu, qty, _options in self.lines("빠네")), 3)
+
+    def test_reading_the_same_tickets_again_changes_nothing(self):
+        """다시 켜서 기록을 처음부터 읽어도 수량이 늘지 않아야 한다."""
+        for _ in range(3):
+            self.store.add(ticket("홀-6", "0303-0001", [
+                ("34. 감바스 오일 파스타", 2, ["빵 추가"]), ("49. 빠네 크림 파스타", 1, [])]))
+            self.store.add(ticket("홀-6", "0303-0001", [
+                ("34. 감바스 오일 파스타", 2, [])], station="가니"))
+        self.assertEqual(self.lines("감바스"), [("감바스 오일 파스타", 2, "빵 추가")])
+        self.assertEqual(self.lines("빠네"), [("빠네 크림 파스타", 1, "")])
+
+    def test_the_same_order_number_at_another_table_is_another_order(self):
+        """포스가 자정에 주문번호를 1번부터 다시 매기면 같은 영업일에 번호가 겹친다."""
+        self.store.add(ticket("홀-5", "0001-0001", [("34. 감바스 오일 파스타", 1, [])], minutes_ago=90))
+        self.store.add(ticket("홀-9", "0001-0001", [("43. 오븐 토마토 파스타", 1, [])]))
+        self.assertEqual(sorted((r["table"], r["menu"]) for r in self.store.search("파스타", DAY)),
+                         [("홀-5", "감바스 오일 파스타"), ("홀-9", "오븐 토마토 파스타")])
+
+    def test_the_same_order_number_on_another_pos_is_another_order(self):
+        """포스가 여러 대면 포스마다 번호를 따로 매긴다."""
+        self.store.add(ticket("홀-5", "0001-0001", [("34. 감바스 오일 파스타", 1, [])], pos="POS-01"))
+        self.store.add(ticket("홀-5", "0001-0001", [("43. 오븐 토마토 파스타", 1, [])], pos="POS-04"))
+        self.assertEqual(sorted(r["menu"] for r in self.store.search("파스타", DAY)),
+                         ["감바스 오일 파스타", "오븐 토마토 파스타"])
+
+    def test_a_cancel_takes_from_the_pos_that_printed_it(self):
+        """주문번호가 겹쳐도 취소는 그 취소를 찍은 포스의 주문에서 뺀다."""
+        self.store.add(ticket("홀-5", "0001-0001", [
+            ("34. 감바스 오일 파스타", 1, [])], pos="POS-01", minutes_ago=10))
+        self.store.add(ticket("홀-5", "0001-0001", [
+            ("34. 감바스 오일 파스타", 1, [])], pos="POS-04", minutes_ago=9))
+        self.store.add(ticket("홀-5", "0001-0002", [
+            ("34. 감바스 오일 파스타", -1, [])], kind="추가", pos="POS-04"))
+        left = [(r["table"], r["qty"]) for r in self.store.search("감바스", DAY)]
+        self.assertEqual(left, [("홀-5", 1)])  # POS-01 의 것만 남는다
+        rows = self.store._conn.execute(
+            "SELECT t.pos_no, i.cancelled FROM items i JOIN tickets t ON t.id = i.ticket_id"
+            " WHERE i.quantity > 0 ORDER BY t.pos_no").fetchall()
+        self.assertEqual([(row["pos_no"], row["cancelled"]) for row in rows],
+                         [("POS-01", 0), ("POS-04", 1)])
+
+    def test_a_cancel_from_another_pos_still_works(self):
+        """다른 포스에서 취소했으면 포스를 가리지 않고 찾는다."""
+        self.store.add(ticket("홀-5", "0002-0001", [
+            ("34. 감바스 오일 파스타", 1, [])], pos="POS-01", minutes_ago=10))
+        self.store.add(ticket("홀-5", "0002-0002", [
+            ("34. 감바스 오일 파스타", -1, [])], kind="추가", pos="POS-04"))
+        self.assertEqual(self.store.search("감바스", DAY), [])
+
+    def test_a_cancel_ticket_from_two_printers_is_counted_once(self):
+        self.store.add(ticket("홀-7", "0304-0001", [("34. 감바스 오일 파스타", 3, [])], minutes_ago=5))
+        for station in ("홀", "가니"):
+            self.store.add(ticket("홀-7", "0304-0002", [
+                ("34. 감바스 오일 파스타", -1, [])], kind="추가", station=station))
+        self.assertEqual([r["qty"] for r in self.store.search("감바스", DAY)], [2])
 
 
 class KeystrokesTest(unittest.TestCase):

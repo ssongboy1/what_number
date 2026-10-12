@@ -176,6 +176,37 @@ class WindowTest(unittest.TestCase):
         self.window.render()
         self.assertEqual(self.window._view_key, first)
 
+    def test_the_window_keeps_running_when_the_store_fails(self):
+        """저장소를 읽다 오류가 나도 2초마다 다시 보는 것을 멈추면 안 된다.
+
+        한 번 끊기면 창이 그대로 굳어서, 주문이 들어와도 화면이 멈춘 것처럼 보인다.
+        """
+        broken = self.window.store
+
+        class Broken:
+            def summary(self, *args, **kwargs):
+                return {"tickets": 0, "last_ticket_at": None}
+
+            def search(self, *args, **kwargs):
+                raise RuntimeError("일부러 낸 오류")
+
+            def recent(self, *args, **kwargs):
+                raise RuntimeError("일부러 낸 오류")
+
+        self.window.store = Broken()
+        self.window.refresh()  # 예외가 밖으로 나오지 않는다
+        self.window.root.update()
+        self.assertIn("새로 그리지 못했습니다", self.window.warn_label.cget("text"))
+        self.window.store = broken
+        self.window.render(force=True)
+        self.assertIn("감바스 오일 파스타", self.shown())
+
+    def test_it_says_so_while_the_old_orders_are_being_read(self):
+        self.window.status_provider = lambda: {"ok": True, "errors": [], "caught_up": False}
+        self.window.refresh()
+        self.window.root.update()
+        self.assertEqual(self.window.state_label.cget("text"), "지난 주문을 읽는 중...")
+
     def test_status_shows_a_problem(self):
         self.window.status_provider = lambda: {"ok": False, "errors": ["기록 파일을 읽지 못했습니다"]}
         self.window.refresh()
