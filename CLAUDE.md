@@ -99,7 +99,28 @@ src/what_number/
    주문이 두 곳으로 갈라져 조용히 누락된다. 윈도우에서는 `SO_EXCLUSIVEADDRUSE` 로
    열어 충돌이 드러나게 한다.
 
-9. **포스의 파일을 파이썬 `open()` 으로 열지 말 것.**
+9. **창의 새로고침은 다음 번을 '한 번만' 예약해야 한다.**
+   `refresh` 를 try/finally 로 감싸면서 예전 예약 줄을 `_refresh_once` 에 남겨 두어
+   **2초마다 예약이 두 배로** 늘었다. 30~40초면 창이 마비되고, 마침 그때 새 주문이
+   들어와서 "새 주문이 들어오면 멈춘다" 로 보였다(2026-10-20, 시험 모드에서 사용자가 찾음).
+   `tests/test_gui.test_the_refresh_loop_schedules_itself_once` 가 이것을 막는다.
+   되풀이하는 시계(`refresh`, `_watch_entry`)를 손볼 때는 예약이 한 군데뿐인지 꼭 볼 것.
+
+10. **윈도우 메시지 처리 중에는 Tk 를 건드리면 안 된다.**
+    윈도우 입력칸이 알려주는 소식(EN_CHANGE 등)은 메시지 처리 중에 온다. 그 안에서
+    Tk 함수를 부르면 Tk 가 담아 둔 상태가 엉켜 **프로그램이 통째로 죽는다**
+    ("Fatal Python error: PyEval_RestoreThread ... the GIL is released". 실제로 죽었다).
+    표시만 남기고 실제 일은 Tk 쪽 시계(`gui._watch_entry`)에서 한다.
+    `tests/test_gui.test_the_windows_hooks_never_touch_tk` 가 이것을 막는다.
+
+11. **ctypes 에 인자·결과 크기를 알려주지 않으면 창 번호가 잘린다.**
+    64비트에서 `int too long to convert` 로 터진다. `win_entry._load()` 를 지우지 말 것.
+
+12. **창 종류(class)에는 인스턴스별 처리 함수를 등록하면 안 된다.**
+    먼저 만든 입력칸이 없어진 뒤 세 번째 창이 사라진 함수를 가리켜 그대로 멈춘다.
+    모듈 하나짜리 함수를 등록하고 창 번호로 주인을 찾는다(`win_entry._dispatch`).
+
+13. **포스의 파일을 파이썬 `open()` 으로 열지 말 것.**
    윈도우에서 `open()` 은 '지우기 허용(FILE_SHARE_DELETE)' 없이 연다. 읽는 동안 포스가
    기록 파일을 정리(이름 바꾸기·지우기)하려 하면 포스 쪽이 실패한다.
    `changes.open_shared()` 를 쓸 것. 크기만 볼 때는 `os.stat` 이면 된다(잠그지 않음).
@@ -107,7 +128,7 @@ src/what_number/
 ## 개발
 
 ```bash
-PYTHONPATH=src python -m unittest discover -s tests   # 테스트 (현재 287건)
+PYTHONPATH=src python -m unittest discover -s tests   # 테스트 (현재 290건)
 PYTHONPATH=src python -m what_number --demo           # 포스 없이 화면 확인
 PYTHONPATH=src python -m what_number --replay 파일.bin  # 인쇄 원본으로 인식 시험
 PYTHONPATH=src python -m what_number --diagnose       # 이 PC 의 프린터 연결 방식 조사
@@ -308,6 +329,18 @@ exe 는 `.github/workflows/build-exe.yml` 이 윈도우에서 자동으로 만�
 
 **실제 한글 조합이 매끄러운지는 사람이 쳐 봐야 안다.** 글자가 들어오는 길(WM_CHAR)과
 알림(EN_CHANGE)이 이어져 있는지는 테스트로 확인했고, 창 모양은 직접 찍어서 확인했다.
+
+**2026-10-20 (2) 시험 모드에서 창이 멈추던 것.** 사용자가 "시험모드로 실행했는데 새 메뉴가
+들어오니까 멈춘다" 고 알려 줬다. 입력칸 때문인 줄 알았으나 **예전 Tk 입력칸에서도 똑같이 멈췄다.**
+원인은 10-12 에 넣은 `refresh` 의 try/finally 였다. 예전 예약 줄이 `_refresh_once` 에 남아
+**예약이 2초마다 두 배로** 늘었고, 30~40초쯤 창이 마비됐다. 마침 그 무렵에 새 주문이 들어와서
+새 주문이 원인처럼 보였다. 예약 줄 하나를 지워 고쳤다(위 함정 9).
+
+찾은 방법을 적어 둔다(다음에 또 멈추면 그대로 하면 된다).
+- `IsHungAppWindow` 로 창이 메시지를 받고 있는지 밖에서 지켜본다
+- `faulthandler.dump_traceback_later(5, repeat=True)` 로 5초마다 모든 갈래의 자리를 찍는다
+  -> 메인 갈래가 계속 `after` 안에 잡혀 있으면 예약이 폭주하는 것이다
+- 입력칸이 범인인지 가리려면 `win_entry.NativeEntry` 를 일부러 막아 예전 입력칸으로 띄워 본다
 
 **아직 확인 안 된 것**
 - **포스 PC 에서 한글을 쳐 보기.** 윈도우 입력칸으로 바꾼 뒤 글자가 밀리지 않는지

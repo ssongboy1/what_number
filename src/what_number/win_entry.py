@@ -187,6 +187,14 @@ class NativeEntry:
     건드리지 않는다.
     """
 
+    # on_change / on_escape 는 **윈도우가 메시지를 처리하는 중**에 불린다.
+    # 그 안에서 Tk 를 건드리면 안 된다. Tk 가 안에 담아 둔 상태가 엉켜 프로그램이 죽는다
+    # ("Fatal Python error: PyEval_RestoreThread ... the GIL is released").
+    # 표시만 남기고, 실제 일은 Tk 쪽 시계(after)에서 하도록 할 것.
+    # on_change / on_escape 는 **윈도우가 메시지를 처리하는 중**에 불린다.
+    # 그 안에서 Tk 를 건드리면 안 된다. Tk 가 안에 담아 둔 상태가 엉켜 프로그램이 죽는다
+    # ("Fatal Python error: PyEval_RestoreThread ... the GIL is released").
+    # 표시만 남기고, 실제 일은 Tk 쪽 시계(after)에서 하도록 할 것.
     def __init__(self, frame, on_change=None, on_escape=None, background: str = "#1a1f2b",
                  foreground: str = "#f2f5fa", family: str = "Malgun Gothic", size: int = 18,
                  padding: int = 10):

@@ -32,6 +32,7 @@ LONG_TABLE = 8  # 이보다 넓은 이름('배달 배민원1')은 작은 글씨�
 FIELD_HEIGHT = 52  # 검색 칸 높이. 윈도우 입력칸을 이 안에 올린다
 TYPING_MS = 120  # 글자를 친 뒤 목록을 다시 그리기까지 기다리는 시간
 SEARCH_LIMIT = 80  # 한 번에 보여주는 줄 수. 넘으면 최근 것부터 잘린다
+POLL_MS = 60  # 윈도우 입력칸에 글자가 들어왔는지 살피는 간격
 
 
 def elapsed(printed_at: float, now: float | None = None) -> str:
@@ -116,6 +117,10 @@ class SearchWindow:
         self.query = ""
         self._view_key = None
         self._typing_job = None
+        # 윈도우 입력칸에서 온 소식을 담아 두는 자리. 소식은 윈도우 메시지 처리 중에 오는데
+        # 그 자리에서 Tk 를 건드리면 프로그램이 죽는다. 그래서 표시만 남기고 여기서 처리한다
+        self._typed_at = 0.0
+        self._clear_wanted = False
 
         self.title = title or "몇번인가요"
         self.root = tk.Tk()
@@ -137,6 +142,8 @@ class SearchWindow:
             # (초점이 창을 드나드는 것(<FocusIn>)에 묶으면 Tk 와 서로 되돌리며 맴돈다)
             self.view.bind("<Button-1>", lambda event: self.entry.focus_set(), add="+")
         self.entry.focus_set()
+        if self.native is not None:
+            self._watch_entry()  # 입력칸을 살피는 시계. 메시지 처리 중에 Tk 를 건드리지 않기 위해서다
         self.refresh()
 
     def _center(self) -> None:
@@ -201,8 +208,9 @@ class SearchWindow:
         try:
             from .win_entry import NativeEntry
 
+            # 아래 두 함수는 **윈도우 메시지 처리 중**에 불린다. Tk 를 건드리면 안 된다
             return NativeEntry(
-                field, on_change=self._typed, on_escape=lambda: self.set_query(""),
+                field, on_change=self._note_typing, on_escape=self._note_clear,
                 background=FIELD, foreground=FIELD_TEXT, family=FAMILY, size=18,
             )
         except Exception as exc:
@@ -255,6 +263,38 @@ class SearchWindow:
             self.root.after_cancel(self._typing_job)
         self._typing_job = self.root.after(TYPING_MS, self._redraw)
 
+    # --- 윈도우 입력칸에서 오는 소식 ---
+    # 이 두 함수는 윈도우가 메시지를 처리하는 중에 불린다. 여기서 Tk 를 건드리면
+    # Tk 가 안에 담아 둔 상태가 엉켜 프로그램이 통째로 죽는다(실제로 죽었다:
+    # "Fatal Python error: PyEval_RestoreThread ... the GIL is released").
+    # 그래서 표시만 남기고, 실제 일은 _watch_entry 에서 한다.
+    def _note_typing(self) -> None:
+        self._typed_at = time.time()
+
+    def _note_clear(self) -> None:
+        self._clear_wanted = True
+
+    def _watch_entry(self) -> None:
+        """입력칸에 글자가 들어왔는지 살핀다. 치기를 멈추면 그때 다시 그린다.
+
+        곧바로 그리지 않는 이유는 예전과 같다. 한글을 조합하는 중에 화면을 그리면
+        글자가 흔들린다. 0.12초 동안 더 치지 않으면 그때 그린다.
+        """
+        try:
+            if self._clear_wanted:
+                self._clear_wanted = False
+                self.set_query("")
+            elif self._typed_at and time.time() - self._typed_at >= TYPING_MS / 1000.0:
+                self._typed_at = 0.0
+                text = self.entry.get().strip()
+                if text != self.query:
+                    self.query = text
+                    self.render(force=True)
+        except Exception as exc:
+            self._show_error(exc)
+        finally:
+            self.root.after(POLL_MS, self._watch_entry)
+
     def _redraw(self) -> None:
         self._typing_job = None
         try:
@@ -271,6 +311,7 @@ class SearchWindow:
         if text:
             self.entry.insert(0, text)
         self.query = text.strip()
+        self._typed_at = 0.0  # 우리가 바꾼 것이니 입력칸에서 온 표시는 지운다
         # 이미 입력칸에 있으면 건드리지 않는다(조합 중인 한글이 끊긴다).
         # 윈도우 입력칸은 focus_set 안에서 스스로 확인한다
         if self.native is not None or self.root.focus_get() is not self.entry:
@@ -373,7 +414,8 @@ class SearchWindow:
             self.state_label.configure(text="주방 기록을 못 읽는 중")
         self.warn_label.configure(text=" / ".join(state.get("errors") or []))
         self.render()
-        self.root.after(REFRESH_MS, self.refresh)
+        # 다음 번 예약은 refresh 의 finally 에서 **한 번만** 한다. 여기서도 예약하면
+        # 2초마다 두 배로 늘어나 30초쯤에 창이 마비된다(실제로 그렇게 멈췄다)
 
     def run(self) -> None:
         self.root.mainloop()

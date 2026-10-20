@@ -1,7 +1,8 @@
+import time
 import unittest
 from datetime import datetime, timedelta
 
-from what_number import gui, kitchen_log
+from what_number import gui, kitchen_log, win_entry
 from what_number.demo import kitchen_ticket
 from what_number.menu_store import MenuStore
 
@@ -206,6 +207,64 @@ class WindowTest(unittest.TestCase):
         self.window.refresh()
         self.window.root.update()
         self.assertEqual(self.window.state_label.cget("text"), "지난 주문을 읽는 중...")
+
+    def test_the_refresh_loop_schedules_itself_once(self):
+        """한 번 돌 때 다음 번을 한 번만 예약해야 한다.
+
+        두 번 예약하면 2초마다 두 배로 늘어난다. 30~40초면 창이 마비되고, 새 주문이
+        들어올 때 멈춘 것처럼 보였다(시험 모드에서 실제로 그랬다).
+        """
+        for loop, name in ((self.window.refresh, "refresh"),
+                           (self.window._watch_entry, "_watch_entry")):
+            if name == "_watch_entry" and self.window.native is None:
+                continue
+            booked = []
+            original = self.window.root.after
+
+            def counting(delay, func=None, *args, _name=name, _original=original):
+                # 같은 함수라도 부를 때마다 다른 꾸러미가 되므로 이름으로 본다
+                if getattr(func, "__name__", "") == _name:
+                    booked.append(delay)
+                    return "시험용"
+                return _original(delay, func, *args)
+
+            self.window.root.after = counting
+            try:
+                loop()
+            finally:
+                self.window.root.after = original
+            self.assertEqual(len(booked), 1, "%s 가 %d번 예약했습니다" % (name, len(booked)))
+
+    def test_the_windows_hooks_never_touch_tk(self):
+        """입력칸에서 오는 소식은 표시만 남겨야 한다.
+
+        그 소식은 윈도우가 메시지를 처리하는 중에 온다. 그 자리에서 Tk 를 건드리면
+        Tk 가 안에 담아 둔 상태가 엉켜 프로그램이 통째로 죽는다. 실제로 시험 모드에서
+        새 주문이 들어올 때 죽었다. 여기서는 Tk 를 다른 것으로 바꿔 두고 불러 본다.
+        """
+        guard = object()  # Tk 를 건드리는 순간 AttributeError 가 난다
+        root, self.window.root = self.window.root, guard
+        try:
+            self.window._note_typing()
+            self.window._note_clear()
+        finally:
+            self.window.root = root
+        self.assertTrue(self.window._typed_at)
+        self.assertTrue(self.window._clear_wanted)
+        self.window._clear_wanted = False
+
+    @unittest.skipUnless(win_entry.available(), "윈도우에서만")
+    def test_typing_through_windows_reaches_the_search(self):
+        """실제로 윈도우가 글자를 넣어 주는 길(WM_CHAR)로 쳐 본다."""
+        if self.window.native is None:
+            self.skipTest("윈도우 입력칸이 아닙니다")
+        for char in "감바스":
+            win_entry._user32.SendMessageW(self.window.native._edit, 0x0102, ord(char), 1)
+        deadline = time.time() + 3
+        while time.time() < deadline and "'감바스'" not in self.shown():
+            self.window.root.update()
+            time.sleep(0.03)
+        self.assertIn("'감바스' 주문한 테이블", self.shown())
 
     def test_status_shows_a_problem(self):
         self.window.status_provider = lambda: {"ok": False, "errors": ["기록 파일을 읽지 못했습니다"]}
