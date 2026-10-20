@@ -107,7 +107,7 @@ src/what_number/
 ## 개발
 
 ```bash
-PYTHONPATH=src python -m unittest discover -s tests   # 테스트 (현재 278건)
+PYTHONPATH=src python -m unittest discover -s tests   # 테스트 (현재 287건)
 PYTHONPATH=src python -m what_number --demo           # 포스 없이 화면 확인
 PYTHONPATH=src python -m what_number --replay 파일.bin  # 인쇄 원본으로 인식 시험
 PYTHONPATH=src python -m what_number --diagnose       # 이 PC 의 프린터 연결 방식 조사
@@ -282,7 +282,35 @@ exe 는 `.github/workflows/build-exe.yml` 이 윈도우에서 자동으로 만�
 덧붙여: 많이 나가는 메뉴는 검색 결과가 80줄에서 잘리므로 "최근 80곳" 이라고 적는다.
 취소 줄에 부호가 없어도(`1 취소`) 빼고, `▶` 없이 `옵션` 으로 끝나는 줄도 옵션으로 읽는다.
 
+**2026-10-20 한글 입력칸을 윈도우 기본 입력칸으로 바꿨다.** 사용자가 "한번해봐" 라고 해서
+`작업내역.md` 에 적어 둔 대로 **입력칸 하나만** 바꿨다(`win_entry.py`). 창 전체를 다른 틀로
+바꾸는 것이 아니라서 **exe 크기는 12.7MB 그대로**이고 받아오는 것도 없다(ctypes 만 쓴다).
+
+- Tk 틀(frame) 안에 **우리가 만든 창**을 올리고, 그 안에 윈도우 기본 입력칸(EDIT)을 넣는다.
+  바깥을 우리 창으로 두는 이유는 두 가지다. `WM_CTLCOLOREDIT` 로 **어둡게 칠하고**
+  (그냥 두면 혼자 하얗게 뜬다 — 사용자가 싫어했던 모양이다), `EN_CHANGE` 로 **글자가 바뀐 것**을
+  받아 검색을 돌린다. Tk 쪽 창 처리는 건드리지 않는다
+- 못 만들면(윈도우가 아니거나 막혀 있으면) 예전 Tk 입력칸으로 **그대로 열린다**(`gui._native_entry`)
+- `get/insert/delete/focus_set` 을 Tk Entry 와 같은 이름으로 갖춰, 쓰는 쪽은 바꿔 끼우기만 한다
+
+**여기서 밟은 함정 두 가지 (다시 밟지 말 것)**
+
+10. **ctypes 에 인자·결과 크기를 알려주지 않으면 창 번호가 잘린다.**
+    `DefWindowProcW` 등을 그냥 부르면 64비트에서 `int too long to convert` 로 터진다.
+    `win_entry._load()` 의 argtypes/restype 를 지우지 말 것.
+11. **창 종류(class)에는 인스턴스별 처리 함수를 등록하면 안 된다.**
+    처음 만든 입력칸이 없어진 뒤 **세 번째 창에서 사라진 함수를 가리켜 그대로 멈췄다**
+    (테스트가 무한정 멈춰 있었다). 모듈 하나짜리 함수(`_dispatch`)를 등록하고 창 번호로
+    주인을 찾는다. `tests/test_win_entry.ManyWindowsTest` 가 네 번 열고 닫아 이것을 막는다.
+
+초점은 `<FocusIn>` 에 묶으면 안 된다. Tk 와 서로 초점을 되돌리며 맴돌아 창이 멈춘다.
+목록을 눌렀을 때만 입력칸으로 돌려준다(`gui` 의 `view.bind("<Button-1>")`).
+
+**실제 한글 조합이 매끄러운지는 사람이 쳐 봐야 안다.** 글자가 들어오는 길(WM_CHAR)과
+알림(EN_CHANGE)이 이어져 있는지는 테스트로 확인했고, 창 모양은 직접 찍어서 확인했다.
+
 **아직 확인 안 된 것**
+- **포스 PC 에서 한글을 쳐 보기.** 윈도우 입력칸으로 바꾼 뒤 글자가 밀리지 않는지
 - **포스가 여러 대면 PC 마다 주방 기록이 따로 남는다.** 주방 프린터는 포스 PC 의 COM 포트에
   물려 있으므로, POS-04 에서 받은 주문은 POS-04 의 PC 에만 적힐 수 있다. 그러면 프로그램을
   켜 둔 PC 의 주문만 창에 뜬다. **다른 포스에서 주문을 넣어 창에 뜨는지 꼭 확인할 것.**

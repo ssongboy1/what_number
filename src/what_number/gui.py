@@ -29,6 +29,7 @@ FIELD_TEXT = TEXT
 REFRESH_MS = 2000
 TABLE_COLUMN = "124p"  # 테이블 번호 칸의 너비
 LONG_TABLE = 8  # 이보다 넓은 이름('배달 배민원1')은 작은 글씨로 줄여 칸 안에 넣는다
+FIELD_HEIGHT = 52  # 검색 칸 높이. 윈도우 입력칸을 이 안에 올린다
 TYPING_MS = 120  # 글자를 친 뒤 목록을 다시 그리기까지 기다리는 시간
 SEARCH_LIMIT = 80  # 한 번에 보여주는 줄 수. 넘으면 최근 것부터 잘린다
 
@@ -130,6 +131,11 @@ class SearchWindow:
         self._build_list(tk)
 
         self.root.bind("<Escape>", lambda event: self.set_query(""))
+        if self.native is not None:
+            # 목록을 눌렀을 때 초점을 입력칸으로 돌려준다. 목록은 읽기만 하는 칸이라
+            # 눌러도 할 일이 없고, 누른 뒤 바로 메뉴를 칠 수 있어야 한다.
+            # (초점이 창을 드나드는 것(<FocusIn>)에 묶으면 Tk 와 서로 되돌리며 맴돈다)
+            self.view.bind("<Button-1>", lambda event: self.entry.focus_set(), add="+")
         self.entry.focus_set()
         self.refresh()
 
@@ -156,15 +162,22 @@ class SearchWindow:
     def _build_search(self, tk) -> None:
         box = tk.Frame(self.root, bg=BACKGROUND)
         box.pack(fill="x", padx=16, pady=(10, 0))
-        # 입력칸을 변수(textvariable)와 묶지 않는다. 묶어 두면 글자를 칠 때마다 Tk 가 칸을
-        # 다시 맞추는데, 그 사이에 한글 조합이 끊겨 글자가 밀린다.
-        self.entry = tk.Entry(
-            box, font=(FAMILY, 18), bg=FIELD, fg=FIELD_TEXT,
-            insertbackground=ACCENT, relief="flat", highlightthickness=2,
-            highlightbackground=LINE, highlightcolor=ACCENT,
-        )
-        self.entry.pack(side="left", fill="x", expand=True, ipady=8, ipadx=8)
-        self.entry.bind("<KeyRelease>", lambda event: self._typed())
+        field = tk.Frame(box, bg=FIELD, highlightthickness=2, highlightbackground=LINE,
+                         height=FIELD_HEIGHT)
+        field.pack(side="left", fill="x", expand=True)
+        field.pack_propagate(False)  # 안쪽 칸이 틀의 높이를 바꾸지 못하게
+        self.native = self._native_entry(field)
+        if self.native is not None:
+            self.entry = self.native
+        else:
+            # 윈도우 입력칸을 못 만든 경우. 입력칸을 변수(textvariable)와 묶지 않는다.
+            # 묶어 두면 글자를 칠 때마다 Tk 가 칸을 다시 맞추고, 그 사이에 한글 조합이 끊긴다.
+            self.entry = tk.Entry(
+                field, font=(FAMILY, 18), bg=FIELD, fg=FIELD_TEXT,
+                insertbackground=ACCENT, relief="flat", highlightthickness=0,
+            )
+            self.entry.pack(fill="both", expand=True, padx=8, pady=6)
+            self.entry.bind("<KeyRelease>", lambda event: self._typed())
         tk.Button(box, text="지우기", command=lambda: self.set_query(""), bg=CARD, fg=MUTED,
                   font=(FAMILY, 11, "bold"), relief="flat", activebackground=LINE,
                   activeforeground=TEXT, cursor="hand2").pack(side="left", padx=(8, 0), ipadx=10, ipady=8)
@@ -179,6 +192,22 @@ class SearchWindow:
             bg=BACKGROUND, fg=MUTED, font=(FAMILY, 9), selectcolor=CARD, activebackground=BACKGROUND,
             activeforeground=TEXT, highlightthickness=0, borderwidth=0, cursor="hand2",
         ).pack(side="right")
+
+    def _native_entry(self, field):
+        """윈도우 기본 입력칸. Tk 입력칸은 한글을 칠 때 글자가 밀린다.
+
+        만들지 못하면(윈도우가 아니거나 막혀 있으면) None 을 돌려주고 Tk 입력칸을 쓴다.
+        """
+        try:
+            from .win_entry import NativeEntry
+
+            return NativeEntry(
+                field, on_change=self._typed, on_escape=lambda: self.set_query(""),
+                background=FIELD, foreground=FIELD_TEXT, family=FAMILY, size=18,
+            )
+        except Exception as exc:
+            print("  ! 윈도우 입력칸을 쓰지 못해 기본 입력칸으로 엽니다: %s" % exc)
+            return None
 
     def _build_list(self, tk) -> None:
         wrap = tk.Frame(self.root, bg=BACKGROUND)
@@ -242,8 +271,10 @@ class SearchWindow:
         if text:
             self.entry.insert(0, text)
         self.query = text.strip()
-        if self.root.focus_get() is not self.entry:
-            self.entry.focus_set()  # 이미 입력칸에 있으면 건드리지 않는다(조합 중인 한글이 끊긴다)
+        # 이미 입력칸에 있으면 건드리지 않는다(조합 중인 한글이 끊긴다).
+        # 윈도우 입력칸은 focus_set 안에서 스스로 확인한다
+        if self.native is not None or self.root.focus_get() is not self.entry:
+            self.entry.focus_set()
         if self._typing_job is not None:
             self.root.after_cancel(self._typing_job)
         self._redraw()
@@ -348,6 +379,9 @@ class SearchWindow:
         self.root.mainloop()
 
     def close(self) -> None:
+        if self.native is not None:
+            self.native.destroy()
+            self.native = None
         try:
             self.root.destroy()
         except Exception:

@@ -56,6 +56,7 @@ jobs:
           --exclude-module unittest
           --hidden-import what_number.demo
           --hidden-import what_number.gui
+          --hidden-import what_number.win_entry
           launcher.py
 
       # 만들어진 exe 가 실제로 실행되는지, 전표 인식까지 되는지 확인한다.

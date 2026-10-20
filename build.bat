@@ -42,6 +42,7 @@ echo  [2/2] exe 만드는 중... (1~2분 걸립니다)
     --exclude-module unittest ^
     --hidden-import what_number.demo ^
     --hidden-import what_number.gui ^
+    --hidden-import what_number.win_entry ^
     launcher.py
 if errorlevel 1 (
     echo  [!] 빌드에 실패했습니다.

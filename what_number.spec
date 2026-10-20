@@ -8,7 +8,7 @@ a = Analysis(
     datas=[],
     hiddenimports=['what_number.demo', 'what_number.scan', 'what_number.diagnose', 'what_number.changes',
                    'what_number.kitchen_log', 'what_number.menu_store', 'what_number.search_web',
-                   'what_number.gui'],
+                   'what_number.gui', 'what_number.win_entry'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
