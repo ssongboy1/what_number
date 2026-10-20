@@ -153,6 +153,17 @@ class WindowTest(unittest.TestCase):
         self.assertTrue(marked, "취소된 메뉴에 취소선 표시가 없습니다")
         self.assertTrue(self.window.view.tag_cget("cancelled", "font").endswith("overstrike"))
 
+    def test_search_marks_cancelled_menus_the_same_way(self):
+        """검색 결과도 최근 주문 목록과 똑같이 취소선 + (취소됨) 으로 보여준다."""
+        self.store.add(ticket("홀-7", "0011-0001", [("20. 비프 찹 스테이크", 1, [])], minutes_ago=5))
+        self.store.add(ticket("홀-7", "0011-0002", [("20. 비프 찹 스테이크", -1, [])], "추가"))
+        self.window.set_query("스테이크")
+        self.window.root.update()
+        shown = self.shown()
+        self.assertIn("비프 찹 스테이크", shown)
+        self.assertIn("(취소됨)", shown)
+        self.assertTrue(self.window.view.tag_ranges("cancelled"), "취소선 표시가 없습니다")
+
     def test_cancelled_menu_can_be_hidden(self):
         self.store.add(ticket("홀-7", "0010-0001", [("20. 비프 찹 스테이크", 1, [])], minutes_ago=5))
         self.store.add(ticket("홀-7", "0010-0002", [("20. 비프 찹 스테이크", -1, [])], "추가"))

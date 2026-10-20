@@ -355,10 +355,15 @@ class SearchWindow:
                 self._write("오늘 이 메뉴를 주문한 테이블이 없습니다.\n", "empty")
             for row in found:
                 table, menu, note, when = result_line(row, now)
+                gone = bool(row.get("cancelled"))
                 self._write_head(table, now - row.get("printed_at", 0) <= 20 * 60)
-                self._write(menu + "\n", "cancelled" if row.get("cancelled") else "menu")
+                # 취소된 메뉴는 최근 주문 목록과 똑같이 보여준다. 취소선만으로는 눈에 덜 띈다
+                self._write(menu, "cancelled" if gone else "menu")
+                if gone:
+                    self._write("  (취소됨)", "note_gone")
+                self._write("\n", "menu")
                 if note:
-                    self._write("\t" + note + "\n", "note")
+                    self._write("\t" + note + "\n", "note_gone" if gone else "note")
                 self._write("\t" + when + "\n", "when")
         else:
             recent = self.store.recent(limit=30, cancelled=cancelled)
